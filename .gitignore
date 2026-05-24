@@ -12,3 +12,5 @@ models/*.pth
 data/archives/**/*.tgz
 data/archives/**/*.7z
 data/archives/**/*.rar
+data/archives/**/*.zip
+data/archives/**/*.tar.gz
