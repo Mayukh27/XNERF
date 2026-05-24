@@ -51,6 +51,16 @@ class MalwareManifestDataset(DatasetLoader):
         data = np.pad(data, (0, max(0, self.image_size * self.image_size - data.size)))[: self.image_size * self.image_size]
         return torch.from_numpy(data.reshape(1, self.image_size, self.image_size).astype("float32") / 255.0)
 
+    def _memory_trace(self, row: dict[str, Any]) -> torch.Tensor:
+        out = torch.zeros(self.memory_len, 8, dtype=torch.float32)
+        feature_path = row.get("feature_path")
+        if feature_path and Path(feature_path).exists():
+            loaded = torch.load(feature_path, map_location="cpu").float()
+            if loaded.dim() == 1:
+                loaded = torch.nn.functional.pad(loaded, (0, max(0, self.memory_len * 8 - loaded.numel())))[: self.memory_len * 8].view(self.memory_len, 8)
+            out[: min(self.memory_len, loaded.shape[0]), : min(8, loaded.shape[1])] = loaded[: self.memory_len, :8]
+        return out
+
     def _load_ids(self, row: dict[str, Any], key: str) -> torch.Tensor:
         values = row.get(key, [])
         out = torch.zeros(self.seq_len, dtype=torch.long)
@@ -67,10 +77,10 @@ class MalwareManifestDataset(DatasetLoader):
             loaded = torch.load(row["isr_path"], map_location="cpu")
             isr[: min(self.isr_len, loaded.shape[0])] = loaded[: self.isr_len]
         return {
-            "binary_image": self._binary_image(path),
+            "binary_image": torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32) if row.get("data_type") == "feature_csv" else self._binary_image(path),
             "api_ids": self._load_ids(row, "api_ids"),
             "network_ids": self._load_ids(row, "network_ids"),
-            "memory_trace": torch.zeros(self.memory_len, 8, dtype=torch.float32),
+            "memory_trace": self._memory_trace(row),
             "isr": isr,
             "arch_id": torch.tensor(ARCH_TO_ID.get(row.get("arch", "x86"), 0), dtype=torch.long),
             "label": torch.tensor(int(row.get("label", 0)), dtype=torch.long),
@@ -81,4 +91,3 @@ class MalwareManifestDataset(DatasetLoader):
 
 class UnifiedMalwareDataset(MalwareManifestDataset):
     """Alias for the production multimodal loader."""
-

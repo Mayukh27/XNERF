@@ -26,6 +26,8 @@ data/archives/
     *.zip | *.tar | *.tar.gz | *.tgz
   cape/
     *.zip | *.tar | *.tar.gz | *.tgz
+    reports/
+      Avast/CAPE report archives containing .json reports
 ```
 
 On Kaggle, upload this `data/archives` folder as a Kaggle Dataset named something like `xnerf-malware-archives`.
@@ -59,3 +61,17 @@ The extractor writes them to:
 data/raw/my_new_dataset/static/
 data/raw/my_new_dataset/dynamic/
 ```
+
+Avast/CAPE report datasets can go here:
+
+```text
+data/archives/cape/reports/avast_cape_reports.zip
+```
+
+or:
+
+```text
+data/archives/avast/reports/avast_reports.zip
+```
+
+The manifest builder parses `.json` reports and adds `api_ids`, `network_ids`, event counts, and sandbox score when available.

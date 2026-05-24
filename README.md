@@ -57,6 +57,7 @@ data/
     ember/                EMBER feature archives
     virusshare/           authorized raw sample archives only
     cape/                 CAPE JSON report archives
+      reports/            Avast/CAPE report ZIP/TAR files with .json reports
 ```
 
 After upload to Kaggle, the expected paths are:
@@ -95,6 +96,24 @@ Future datasets do not require extractor code changes. Add them as:
 data/archives/<dataset_name>/<modality_or_split>/*.zip
 ```
 
+For the Avast/CAPE report dataset, use:
+
+```text
+data/archives/cape/reports/avast_reports.zip
+```
+
+The parser accepts CAPE-style JSON fields such as `behavior.processes[].calls`, `behavior.apistats`, and `network.dns/http/tcp/udp`. During manifest building, those reports become `api_ids` and `network_ids` for the dynamic encoders.
+
+AndMal2020/CIC numeric CSVs are also supported. Headerless rows shaped like:
+
+```text
+sample_id, 0.12, 4, 8.5, ...
+```
+
+are converted into one training sample per row. The numeric feature vector is cached as a tensor and used as `memory_trace [512,8]`.
+
+Headered CSVs are also supported. Known `id/hash/sha256`, `label/class/verdict`, and `family/category` columns are used as metadata; all other numeric columns become features. `public_labels.csv` is treated as metadata, not as a training sample file.
+
 The recursive extractor preserves the relative path:
 
 ```text
@@ -131,10 +150,64 @@ Use the cells in [xnerf/notebooks/kaggle_setup.py](/c/Users/Mayukh/OneDrive/Docu
 
 ```bash
 pip install -q torch-geometric transformers fastapi uvicorn capstone networkx ray umap-learn reportlab
-python -m xnerf.datasets.extract_archives --archive-root /kaggle/input/xnerf-malware-archives/archives --data-root /kaggle/working/data
-python -m xnerf.datasets.build_dataset --root /kaggle/working/data --out /kaggle/working/data/processed/manifest.jsonl
-python -m xnerf.training.train --config xnerf/configs/kaggle.yaml
-python -m xnerf.deployment.export_checkpoint --input /kaggle/working/checkpoints/best.pt --config xnerf/configs/kaggle.yaml --output /kaggle/working/export/xnerf_local_inference.pt
+python -m xnerf.pipeline.kaggle_run --config xnerf/configs/kaggle.yaml
+```
+
+That single command performs extraction, train/val/test split creation, training, held-out testing, zero-shot prototype build/evaluation, and local checkpoint export.
+
+The build step writes:
+
+```text
+/kaggle/working/data/processed/manifest.jsonl
+/kaggle/working/data/processed/train_manifest.jsonl
+/kaggle/working/data/processed/val_manifest.jsonl
+/kaggle/working/data/processed/test_manifest.jsonl
+```
+
+After training/testing, Kaggle outputs:
+
+```text
+/kaggle/working/checkpoints/best.pt
+/kaggle/working/runs/metrics.json
+/kaggle/working/runs/test/test_metrics.json
+/kaggle/working/runs/test/test_predictions.npz
+/kaggle/working/runs/test/confusion_matrix.png
+/kaggle/working/runs/test/tsne.png
+/kaggle/working/runs/test/umap.png
+/kaggle/working/runs/zero_shot/prototypes.pt
+/kaggle/working/runs/zero_shot/zero_shot_metrics.json
+/kaggle/working/runs/zero_shot/zero_shot_predictions.npz
+/kaggle/working/export/xnerf_local_inference.pt
+```
+
+The one-command pipeline also copies the important files to one final output folder:
+
+```text
+/kaggle/working/xnerf_output/summary.json
+/kaggle/working/xnerf_output/xnerf_local_inference.pt
+/kaggle/working/xnerf_output/test_metrics.json
+/kaggle/working/xnerf_output/zero_shot_metrics.json
+/kaggle/working/xnerf_output/prototypes.pt
+/kaggle/working/xnerf_output/confusion_matrix.png
+/kaggle/working/xnerf_output/test_predictions.npz
+/kaggle/working/xnerf_output/zero_shot_predictions.npz
+```
+
+## Zero-Shot Implementation
+
+X-NERF++ exposes `zero_shot_embedding` from the trained model. The zero-shot path builds a prototype bank by averaging embeddings per family or behavior label, then classifies unseen samples by cosine similarity.
+
+The one-command Kaggle pipeline runs this automatically. To run only zero-shot manually:
+
+```bash
+python -m xnerf.zero_shot.build_prototypes --config xnerf/configs/kaggle.yaml --checkpoint /kaggle/working/checkpoints/best.pt --manifest /kaggle/working/data/processed/train_manifest.jsonl --output /kaggle/working/runs/zero_shot/prototypes.pt
+python -m xnerf.zero_shot.evaluate_zero_shot --config xnerf/configs/kaggle.yaml --checkpoint /kaggle/working/checkpoints/best.pt --manifest /kaggle/working/data/processed/test_manifest.jsonl --prototypes /kaggle/working/runs/zero_shot/prototypes.pt --out /kaggle/working/runs/zero_shot
+```
+
+This writes `zero_shot_accuracy` to:
+
+```text
+/kaggle/working/runs/zero_shot/zero_shot_metrics.json
 ```
 
 ## Module Contracts
@@ -155,3 +228,12 @@ curl http://localhost:8000/result/<id>
 ## Free Training Target
 
 Use `xnerf/notebooks/kaggle_setup.py` as notebook cells on a free Kaggle T4 GPU. Keep batch size small and use gradient accumulation.
+
+## Tests
+
+Parser and dataset tests:
+
+```bash
+pytest tests/test_cape_parser.py tests/test_build_dataset.py
+pytest tests/test_feature_csv.py
+```

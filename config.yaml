@@ -2,8 +2,10 @@ seed: 1337
 data:
   root: data
   archive_root: data/archives
-  train_manifest: data/processed/manifest.jsonl
-  val_manifest:
+  full_manifest: data/processed/manifest.jsonl
+  train_manifest: data/processed/train_manifest.jsonl
+  val_manifest: data/processed/val_manifest.jsonl
+  test_manifest: data/processed/test_manifest.jsonl
 model:
   num_classes: 2
   num_families: 32
