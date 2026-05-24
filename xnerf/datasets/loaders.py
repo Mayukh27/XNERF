@@ -76,8 +76,11 @@ class MalwareManifestDataset(DatasetLoader):
         if row.get("isr_path") and Path(row["isr_path"]).exists():
             loaded = torch.load(row["isr_path"], map_location="cpu")
             isr[: min(self.isr_len, loaded.shape[0])] = loaded[: self.isr_len]
+        data_type = row.get("data_type")
         return {
-            "binary_image": torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32) if row.get("data_type") == "feature_csv" else self._binary_image(path),
+            "binary_image": torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32)
+            if data_type in {"feature_csv", "feature_parquet"}
+            else self._binary_image(path),
             "api_ids": self._load_ids(row, "api_ids"),
             "network_ids": self._load_ids(row, "network_ids"),
             "memory_trace": self._memory_trace(row),

@@ -99,12 +99,37 @@ ID_COLUMNS = {
 LABEL_COLUMNS = {"label", "class", "category", "verdict", "is_malware", "malware", "type"}
 FAMILY_COLUMNS = {"family", "malware_family", "class_name", "category_name"}
 
+SPLIT_ALIASES = {
+    "train": "train",
+    "training": "train",
+    "test": "test",
+    "val": "val",
+    "valid": "val",
+    "validation": "val",
+}
+SPLIT_PATTERN = re.compile(r"(?:^|[^a-z])(train|training|test|val|valid|validation)(?:[^a-z]|$)")
+
 
 def column_index(headers: list[str], candidates: set[str]) -> int | None:
     normalized = [norm_col(h) for h in headers]
     for i, name in enumerate(normalized):
         if name in candidates:
             return i
+    return None
+
+
+def normalize_split(value: str | None) -> str | None:
+    if not value:
+        return None
+    key = value.strip().lower()
+    return SPLIT_ALIASES.get(key)
+
+
+def infer_split_from_path(path: Path) -> str | None:
+    for part in (*path.parts, path.name):
+        match = SPLIT_PATTERN.search(part.lower())
+        if match:
+            return SPLIT_ALIASES.get(match.group(1))
     return None
 
 
@@ -209,6 +234,7 @@ def process_feature_csv(
     dataset = path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown"
     default_label = infer_label(path)
     default_family = feature_family_from_path(path)
+    split_hint = infer_split_from_path(path)
     label_maps = label_maps or {}
     file_key = sha256_file(path)[:12]
     with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
@@ -282,6 +308,123 @@ def process_feature_csv(
                     "arch": infer_arch(path),
                 }
             )
+            if split_hint:
+                rows[-1]["split"] = split_hint
+    return rows
+
+
+def _parquet_table_to_pydict(path: Path) -> dict[str, list]:
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError("Reading parquet requires pyarrow. Install pyarrow to parse parquet datasets.") from exc
+    table = pq.read_table(path)
+    return table.to_pydict()
+
+
+def _feature_column_name(columns: list[str]) -> str | None:
+    for name in ("features", "feature", "feature_vector", "x"):
+        if name in columns:
+            return name
+    return None
+
+
+def process_feature_parquet(
+    path: Path,
+    raw: Path,
+    cache: Path,
+    label_maps: dict[str, dict] | None = None,
+    max_rows_per_parquet: int | None = None,
+) -> list[dict]:
+    """Convert parquet feature tables into manifest rows.
+
+    Supports EMBER-style parquet files with a `features` column or wide numeric
+    tables with id/label metadata columns.
+    """
+
+    rows: list[dict] = []
+    feature_cache = cache / "features"
+    feature_cache.mkdir(parents=True, exist_ok=True)
+    dataset = path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown"
+    default_label = infer_label(path)
+    default_family = feature_family_from_path(path)
+    split_hint = infer_split_from_path(path)
+    label_maps = label_maps or {}
+    data = _parquet_table_to_pydict(path)
+    if not data:
+        return rows
+    columns = list(data.keys())
+    feature_col = _feature_column_name(columns)
+    split_col = "split" if "split" in data else ("subset" if "subset" in data else None)
+    file_key = sha256_file(path)[:12]
+    size = len(next(iter(data.values())))
+
+    id_col = None
+    label_col = None
+    family_col = None
+    if feature_col is None:
+        id_col = column_index(columns, ID_COLUMNS)
+        label_col = column_index(columns, LABEL_COLUMNS)
+        family_col = column_index(columns, FAMILY_COLUMNS)
+        normalized = [norm_col(h) for h in columns]
+        skip_cols = {idx for idx in (id_col, label_col, family_col) if idx is not None}
+        numeric_indexes = [
+            i
+            for i, name in enumerate(normalized)
+            if i not in skip_cols and name not in LABEL_COLUMNS and name not in FAMILY_COLUMNS
+        ]
+    else:
+        numeric_indexes = []
+
+    for idx in range(size):
+        if max_rows_per_parquet is not None and len(rows) >= max_rows_per_parquet:
+            break
+        sample_id = None
+        if id_col is not None:
+            sample_id = str(data[columns[id_col]][idx]).strip()
+        if not sample_id:
+            sample_id = str(data.get("sha256", [""] * size)[idx]).strip() if "sha256" in data else f"{path.stem}_{idx}"
+        if feature_col:
+            features = data[feature_col][idx] or []
+        else:
+            features = [
+                _safe_float(data[columns[i]][idx])
+                for i in numeric_indexes
+                if _safe_float(data[columns[i]][idx]) is not None
+            ]
+        if not features:
+            continue
+
+        import torch
+
+        feature_path = feature_cache / f"{file_key}_{safe_name(path.stem, 'parquet')}_{idx}_{safe_name(sample_id, 'sample')[:16]}.pt"
+        torch.save(build_memory_trace(list(features)), feature_path)
+        mapped = label_maps.get(sample_id, {})
+        label = mapped.get("label", default_label)
+        if label_col is not None:
+            label = parse_label_value(data[columns[label_col]][idx], default=label)
+        family = mapped.get("family", default_family)
+        if family_col is not None:
+            family_val = str(data[columns[family_col]][idx]).strip()
+            if family_val:
+                family = family_val
+        row = {
+            "path": str(path),
+            "row_index": idx,
+            "sample_id": sample_id,
+            "sha256": sample_id if len(sample_id) >= 16 else f"{sha256_file(path)}:{idx}",
+            "dataset": dataset,
+            "data_type": "feature_parquet",
+            "feature_path": str(feature_path),
+            "feature_dim": len(features),
+            "label": label,
+            "family": family,
+            "arch": infer_arch(path),
+        }
+        row_split = normalize_split(str(data[split_col][idx])) if split_col else split_hint
+        if row_split:
+            row["split"] = row_split
+        rows.append(row)
     return rows
 
 
@@ -332,8 +475,51 @@ def split_rows(
     return train, val, test
 
 
+def split_train_val(rows: list[dict], val_ratio: float = 0.1, seed: int = 1337) -> tuple[list[dict], list[dict]]:
+    if not rows or val_ratio <= 0:
+        return rows, []
+    buckets: dict[tuple, list[dict]] = {}
+    for row in rows:
+        key = (row.get("label", 0), row.get("family", "unknown"))
+        buckets.setdefault(key, []).append(row)
+    rng = random.Random(seed)
+    train, val = [], []
+    for bucket in buckets.values():
+        rng.shuffle(bucket)
+        n = len(bucket)
+        if n < 2:
+            train.extend(bucket)
+            continue
+        n_val = max(1, int(n * val_ratio))
+        if n_val >= n:
+            n_val = 1
+        val.extend(bucket[:n_val])
+        train.extend(bucket[n_val:])
+    rng.shuffle(train)
+    rng.shuffle(val)
+    return train, val
+
+
 def write_splits(out: Path, rows: list[dict], train_ratio: float, val_ratio: float, seed: int) -> dict[str, int]:
-    train, val, test = split_rows(rows, train_ratio=train_ratio, val_ratio=val_ratio, seed=seed)
+    split_rows_map = {"train": [], "val": [], "test": []}
+    unknown: list[dict] = []
+    for row in rows:
+        split = normalize_split(row.get("split"))
+        if split in split_rows_map:
+            split_rows_map[split].append(row)
+        else:
+            unknown.append(row)
+    has_explicit = any(split_rows_map.values())
+    if not has_explicit:
+        train, val, test = split_rows(rows, train_ratio=train_ratio, val_ratio=val_ratio, seed=seed)
+    else:
+        train = split_rows_map["train"] + unknown
+        val = split_rows_map["val"]
+        test = split_rows_map["test"]
+        if not train:
+            train, val, test = split_rows(rows, train_ratio=train_ratio, val_ratio=val_ratio, seed=seed)
+        elif not val:
+            train, val = split_train_val(train, val_ratio=val_ratio, seed=seed)
     split_dir = out.parent
     write_jsonl(split_dir / "train_manifest.jsonl", train)
     write_jsonl(split_dir / "val_manifest.jsonl", val)
@@ -367,6 +553,11 @@ def build_manifest(
             csv_rows = process_feature_csv(path, raw=raw, cache=cache, label_maps=label_maps)
             rows.extend(csv_rows)
             print(f"Parsed {len(csv_rows)} feature rows from {path}")
+            continue
+        if path.suffix.lower() == ".parquet":
+            parquet_rows = process_feature_parquet(path, raw=raw, cache=cache, label_maps=label_maps)
+            rows.extend(parquet_rows)
+            print(f"Parsed {len(parquet_rows)} feature rows from {path}")
             continue
         record = {
             "path": str(path),
