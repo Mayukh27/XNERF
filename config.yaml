@@ -1,0 +1,20 @@
+seed: 1337
+data:
+  root: data
+  archive_root: data/archives
+  train_manifest: data/processed/manifest.jsonl
+  val_manifest:
+model:
+  num_classes: 2
+  num_families: 32
+training:
+  batch_size: 1
+  lr: 0.0003
+  epochs: 1
+  grad_accum: 1
+  num_workers: 0
+  checkpoint_dir: checkpoints
+  patience: 1
+local_inference:
+  checkpoint: models/xnerf_local_inference.pt
+  note: "Train on Kaggle; use this PC for API/inference only."

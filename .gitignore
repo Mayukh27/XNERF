@@ -1,0 +1,17 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/raw/
+data/cache/
+data/processed/
+runs/
+checkpoints/
+models/*.pt
+models/*.pth
+data/archives/**/*.zip
+data/archives/**/*.tar
+data/archives/**/*.tar.gz
+data/archives/**/*.tgz
+data/archives/**/*.7z
+data/archives/**/*.rar

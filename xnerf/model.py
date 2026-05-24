@@ -1,0 +1,75 @@
+from __future__ import annotations
+
+import torch
+from torch import nn
+
+from xnerf.alignment.adversarial import CrossArchitectureAligner
+from xnerf.encoders.api import APIEncoder
+from xnerf.encoders.binary_image import BinaryImageEncoder
+from xnerf.encoders.memory import MemoryEncoder
+from xnerf.encoders.network import NetworkEncoder
+from xnerf.fields.mnef import MNEF
+from xnerf.renderer.trajectory_decoder import TrajectoryDecoder
+from xnerf.synchronization.sfs import SemanticFieldSynchronizer
+from xnerf.utils.base import BaseModule
+
+
+class XNERFPlusPlus(BaseModule):
+    """End-to-end X-NERF++ model.
+
+    Inputs:
+        batch dict with binary_image [B,1,H,W], api_ids [B,T], memory_trace [B,T,C],
+        network_ids [B,T], arch_id [B].
+    Outputs:
+        malware_logits [B,num_classes], family_logits [B,num_families],
+        zero_shot_embedding [B,2048], trajectory logits, MNEF field.
+    Tensor dimensions:
+        synchronized state [B,field_time,2048], field [B,field_time,1024].
+    Usage:
+        model = XNERFPlusPlus(num_classes=2, num_families=32)
+        out = model(batch)
+    """
+
+    def __init__(self, num_classes: int = 2, num_families: int = 32, field_time: int = 16, use_binary: bool = True):
+        super().__init__()
+        self.use_binary = use_binary
+        self.field_time = field_time
+        self.binary = BinaryImageEncoder() if use_binary else None
+        self.api = APIEncoder()
+        self.memory = MemoryEncoder()
+        self.network = NetworkEncoder()
+        self.sfs = SemanticFieldSynchronizer()
+        self.arch_embed = nn.Embedding(6, 64)
+        self.memory_context = nn.Linear(512, 512)
+        self.mnef = MNEF()
+        self.aligner = CrossArchitectureAligner(feature_dim=2048)
+        self.renderer = TrajectoryDecoder()
+        self.malware_head = nn.Linear(2048, num_classes)
+        self.family_head = nn.Linear(2048, num_families)
+
+    def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        embeddings = {
+            "api": self.api(batch["api_ids"]),
+            "memory": self.memory(batch["memory_trace"]),
+            "network": self.network(batch["network_ids"]),
+        }
+        if self.use_binary and "binary_image" in batch:
+            embeddings["binary"] = self.binary(batch["binary_image"])
+        semantic = self.sfs(embeddings, time_steps=self.field_time)
+        pooled = semantic.mean(dim=1)
+        aligned = self.aligner(pooled)
+        b, t, _ = semantic.shape
+        coords = torch.linspace(0, 1, t, device=semantic.device).view(1, t, 1).expand(b, t, 1)
+        arch = self.arch_embed(batch["arch_id"]).unsqueeze(1).expand(b, t, 64)
+        mem = self.memory_context(embeddings["memory"]).unsqueeze(1).expand(b, t, 512)
+        field_out = self.mnef(coords, coords, semantic, mem, arch)
+        traj = self.renderer(field_out["field"])
+        return {
+            "malware_logits": self.malware_head(aligned["aligned"]),
+            "family_logits": self.family_head(aligned["aligned"]),
+            "zero_shot_embedding": aligned["aligned"],
+            "arch_logits": aligned["arch_logits"],
+            **field_out,
+            **traj,
+        }
+
