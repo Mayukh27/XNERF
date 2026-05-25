@@ -9,7 +9,8 @@
 # %cd /kaggle/working/xnerf-project
 #
 # Cell 3: dataset archive locations
-# # Upload this local folder as a Kaggle Dataset named: xnerf-malware-archives
+# # Zip each dataset subfolder under data/archives, then upload the whole
+# # data/archives folder as one Kaggle Dataset named: xnerf-malware-archives
 # # local: data/archives/<dataset_name>/*.zip|*.tar|*.tar.gz
 # # kaggle: /kaggle/input/xnerf-malware-archives/archives/<dataset_name>/*.zip|*.tar|*.tar.gz
 # !find /kaggle/input/xnerf-malware-archives/archives -maxdepth 4 -type f | head -50
