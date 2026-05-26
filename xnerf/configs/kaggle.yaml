@@ -2,24 +2,29 @@ seed: 1337
 data:
   root: /kaggle/working/data
   archive_root: /kaggle/input/datasets/mayukh02/xnerf-malware-archives
+
   full_manifest: /kaggle/input/datasets/mayukh02/manifests/manifest.jsonl
-  train_manifest: /kaggle/input/datasets/mayukh02/manifests/train_manifest.jsonl
-  val_manifest: /kaggle/input/datasets/mayukh02/manifests/val_manifest.jsonl
-  test_manifest: /kaggle/input/datasets/mayukh02/manifests/test_manifest.jsonl
+
+  train_manifest: /kaggle/working/train_manifest_fixed.jsonl
+  val_manifest: /kaggle/working/val_manifest_fixed.jsonl
+  test_manifest: /kaggle/working/test_manifest_fixed.jsonl
+
 splits:
   train_ratio: 0.8
   val_ratio: 0.1
+
 model:
   num_classes: 2
   num_families: 32
+
 training:
-  batch_size: 1
+  batch_size: 16
   lr: 0.0003
-  epochs: 5
-  grad_accum: 8
-  num_workers: 0
+  epochs: 1
+  grad_accum: 1
+  num_workers: 4
   checkpoint_dir: /kaggle/working/checkpoints
-  patience: 3
+  patience: 1
 export:
   checkpoint: /kaggle/working/checkpoints/best.pt
   output: /kaggle/working/export/xnerf_local_inference.pt
