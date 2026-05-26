@@ -49,6 +49,14 @@ def run_kaggle_pipeline(
     """
 
     cfg = load_config(config_path)
+
+    print("=== CONFIG DEBUG ===")
+    print("Train:", cfg["data"]["train_manifest"])
+    print("Val:", cfg["data"]["val_manifest"])
+    print("Test:", cfg["data"]["test_manifest"])
+    print("====================")
+
+
     data_root = Path(cfg["data"]["root"])
     archive_root = Path(cfg["data"]["archive_root"])
     full_manifest = Path(cfg["data"].get("full_manifest", data_root / "processed" / "manifest.jsonl"))
