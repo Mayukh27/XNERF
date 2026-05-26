@@ -1,11 +1,11 @@
 seed: 1337
 data:
   root: /kaggle/working/data
-  archive_root: /kaggle/input/xnerf-malware-archives/archives
-  full_manifest: /kaggle/working/data/processed/manifest.jsonl
-  train_manifest: /kaggle/working/data/processed/train_manifest.jsonl
-  val_manifest: /kaggle/working/data/processed/val_manifest.jsonl
-  test_manifest: /kaggle/working/data/processed/test_manifest.jsonl
+  archive_root: /kaggle/input/datasets/mayukh02/xnerf-malware-archives
+  full_manifest: /kaggle/input/datasets/mayukh02/manifests/manifest.jsonl
+  train_manifest: /kaggle/input/datasets/mayukh02/manifests/train_manifest.jsonl
+  val_manifest: /kaggle/input/datasets/mayukh02/manifests/val_manifest.jsonl
+  test_manifest: /kaggle/input/datasets/mayukh02/manifests/test_manifest.jsonl
 splits:
   train_ratio: 0.8
   val_ratio: 0.1
@@ -13,11 +13,11 @@ model:
   num_classes: 2
   num_families: 32
 training:
-  batch_size: 4
+  batch_size: 1
   lr: 0.0003
   epochs: 5
-  grad_accum: 4
-  num_workers: 2
+  grad_accum: 8
+  num_workers: 0
   checkpoint_dir: /kaggle/working/checkpoints
   patience: 3
 export:
