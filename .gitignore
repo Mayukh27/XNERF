@@ -15,3 +15,4 @@ data/archives/**/*.rar
 data/archives/**/*.zip
 data/archives/**/*.tar.gz
 /xnerf-malware-archives/
+desktop.ini
