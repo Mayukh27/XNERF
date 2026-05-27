@@ -28,16 +28,22 @@ class APIEncoder(BaseModule):
         encoder_kwargs = {"num_layers": layers}
         if "enable_nested_tensor" in inspect.signature(nn.TransformerEncoder).parameters:
             encoder_kwargs["enable_nested_tensor"] = False
-        self.encoder = nn.TransformerEncoder(layer, num_layers=layers)
+        self.encoder = nn.TransformerEncoder(layer, **encoder_kwargs)
         self.proj = nn.Linear(hidden_dim, out_dim)
-
+        
     def forward(self, api_ids: torch.Tensor) -> torch.Tensor:
         b, t = api_ids.shape
         pos = torch.arange(t, device=api_ids.device).unsqueeze(0).expand(b, t)
         mask = api_ids.eq(0)
+        # Guard against rows that are entirely padding (all tokens == 0).
+        # PyTorch's nested-tensor path raises "at least one constituent tensor
+        # should have non-zero numel" when every position in a row is masked out.
+        # Force at least the first position to be unmasked per row so the
+        # encoder always receives a non-empty sequence.
+        all_pad = mask.all(dim=1, keepdim=True)   # [B, 1] bool
+        mask = mask & ~all_pad                     # unmask position-0 for those rows
         h = self.token(api_ids) + self.pos(pos)
         h = self.encoder(h, src_key_padding_mask=mask)
         denom = (~mask).sum(dim=1, keepdim=True).clamp_min(1)
         pooled = h.masked_fill(mask.unsqueeze(-1), 0).sum(dim=1) / denom
         return self.proj(pooled)
-

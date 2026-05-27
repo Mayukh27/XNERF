@@ -25,3 +25,20 @@
 # Cell 6: download artifacts from Kaggle output panel
 # !find /kaggle/working/xnerf_output -maxdepth 1 -type f -print
 # !cat /kaggle/working/xnerf_output/summary.json
+
+
+
+
+#python -m xnerf.pipeline.kaggle_run build-manifest --config xnerf/configs/kaggle.yaml
+#python -m xnerf.pipeline.kaggle_run train           --config xnerf/configs/kaggle.yaml
+# -- save outputs, start a new session, load checkpoint as dataset --
+#python -m xnerf.pipeline.kaggle_run test            --config xnerf/configs/kaggle.yaml
+#python -m xnerf.pipeline.kaggle_run zero-shot       --config xnerf/configs/kaggle.yaml
+#python -m xnerf.pipeline.kaggle_run export          --config xnerf/configs/kaggle.yaml
+
+
+#python -m xnerf.pipeline.local_run build-manifest
+#python -m xnerf.pipeline.local_run train
+#python -m xnerf.pipeline.local_run test
+# point at a specific checkpoint without retraining:
+#python -m xnerf.pipeline.local_run test --checkpoint checkpoints/epoch3.pt
