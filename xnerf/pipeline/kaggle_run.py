@@ -1,24 +1,34 @@
-"""kaggle_run.py — split pipeline for Kaggle.
+"""kaggle_run.py — Kaggle pipeline with both monolithic and split modes.
 
-Subcommands (run in order):
+Split subcommands (run each independently in separate notebook cells):
     build-manifest   Extract archives and build train/val/test manifests.
-    train            Train the model; writes checkpoints/best.pt + runs/train_done.json.
-    validate         Run validation loop on val split and report metrics.
+    train            Train the model; writes checkpoints/best.pt + train_done.json.
+    validate         Run validation loop on val split from an existing checkpoint.
     test             Evaluate best.pt on the test split.
     zero-shot        Build prototype bank then evaluate zero-shot accuracy.
     export           Package best.pt into a local-inference checkpoint.
 
-    all              Run all of the above in sequence (legacy behaviour).
+Monolithic subcommand (original behaviour, runs everything at once):
+    pipeline         Run all stages end-to-end in a single call.
 
-Examples:
-    # Kaggle notebook cell 1
+Examples — split mode:
+    # Notebook cell 1
     !python -m xnerf.pipeline.kaggle_run build-manifest --config xnerf/configs/kaggle.yaml
 
-    # Kaggle notebook cell 2
+    # Notebook cell 2 — runs ~10 hrs, saves checkpoint
     !python -m xnerf.pipeline.kaggle_run train --config xnerf/configs/kaggle.yaml
 
-    # After downloading / inspecting outputs:
-    !python -m xnerf.pipeline.kaggle_run test --config xnerf/configs/kaggle.yaml
+    # New session — load checkpoint as a Kaggle dataset, then:
+    !python -m xnerf.pipeline.kaggle_run test      --config xnerf/configs/kaggle.yaml
+    !python -m xnerf.pipeline.kaggle_run zero-shot --config xnerf/configs/kaggle.yaml
+    !python -m xnerf.pipeline.kaggle_run export    --config xnerf/configs/kaggle.yaml
+
+    # Override checkpoint for any stage:
+    !python -m xnerf.pipeline.kaggle_run test --checkpoint /kaggle/input/my-ckpt/best.pt
+
+Examples — monolithic mode:
+    !python -m xnerf.pipeline.kaggle_run pipeline --config xnerf/configs/kaggle.yaml
+    !python -m xnerf.pipeline.kaggle_run pipeline --config xnerf/configs/kaggle.yaml --skip-extract
 """
 from __future__ import annotations
 
@@ -86,19 +96,50 @@ def _resolve_paths(cfg: dict) -> dict[str, Path]:
     }
 
 
+def _require_checkpoint(p: dict[str, Path], override: str | None = None) -> Path:
+    ckpt = Path(override) if override else p["checkpoint"]
+    if not ckpt.exists():
+        raise FileNotFoundError(
+            f"Checkpoint not found: {ckpt}\n"
+            "Run the 'train' command first, or pass --checkpoint <path>."
+        )
+    return ckpt
+
+
+def _collect_final_files(p: dict[str, Path]) -> dict[str, str]:
+    """Copy artefacts into final_dir and return paths that exist."""
+    copies = {
+        "local_checkpoint": (p["export_output"],          p["final_dir"] / "xnerf_local_inference.pt"),
+        "train_metrics":    (p["train_metrics"],           p["final_dir"] / "train_metrics.json"),
+        "test_metrics":     (p["test_dir"] / "test_metrics.json",          p["final_dir"] / "test_metrics.json"),
+        "zero_shot_metrics":(p["zero_shot_dir"] / "zero_shot_metrics.json",p["final_dir"] / "zero_shot_metrics.json"),
+        "prototype_bank":   (p["prototype_bank"],          p["final_dir"] / "prototypes.pt"),
+        "confusion_matrix": (p["test_dir"] / "confusion_matrix.png",       p["final_dir"] / "confusion_matrix.png"),
+        "test_predictions": (p["test_dir"] / "test_predictions.npz",       p["final_dir"] / "test_predictions.npz"),
+        "zero_shot_preds":  (p["zero_shot_dir"] / "zero_shot_predictions.npz",
+                             p["final_dir"] / "zero_shot_predictions.npz"),
+    }
+    result: dict[str, str] = {}
+    for key, (src, dst) in copies.items():
+        _copy_if_exists(src, dst)
+        if dst.exists():
+            result[key] = str(dst)
+    return result
+
+
 # ---------------------------------------------------------------------------
-# Individual stage functions
+# Individual stage functions (split mode)
 # ---------------------------------------------------------------------------
 
 def cmd_build_manifest(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
     result: dict[str, Any] = {}
 
-    if args.skip_extract:
+    if getattr(args, "skip_extract", False):
         result["extract"] = {"skipped": True}
     else:
         result["extract"] = extract_dataset_archives(p["archive_root"], p["data_root"])
 
-    if args.rebuild_manifests or not _manifests_exist(
+    if getattr(args, "rebuild_manifests", False) or not _manifests_exist(
         p["full_manifest"], p["train_manifest"], p["val_manifest"], p["test_manifest"]
     ):
         build_manifest(
@@ -114,10 +155,10 @@ def cmd_build_manifest(cfg: dict, p: dict[str, Path], args: argparse.Namespace) 
         result["manifests"] = {"reused": True}
 
     result["manifests"].update({
-        "full": str(p["full_manifest"]),
+        "full":  str(p["full_manifest"]),
         "train": str(p["train_manifest"]),
-        "val": str(p["val_manifest"]),
-        "test": str(p["test_manifest"]),
+        "val":   str(p["val_manifest"]),
+        "test":  str(p["test_manifest"]),
     })
 
     _write_json(p["final_dir"] / "build_manifest_result.json", result)
@@ -126,14 +167,13 @@ def cmd_build_manifest(cfg: dict, p: dict[str, Path], args: argparse.Namespace) 
 
 
 def cmd_train(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    if p["train_done"].exists() and not args.force:
+    if p["train_done"].exists() and not getattr(args, "force", False):
         print(f"[train] Checkpoint already exists at {p['checkpoint']}.")
         print(f"        Delete {p['train_done']} or pass --force to retrain.")
         return _read_json(p["train_done"])
 
     metrics = run_training(args.config)
 
-    # Write sentinel so downstream commands know training completed.
     sentinel = {"status": "done", "checkpoint": str(p["checkpoint"]), **metrics}
     _write_json(p["train_done"], sentinel)
     _write_json(p["train_metrics"], metrics)
@@ -144,36 +184,33 @@ def cmd_train(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[s
 
 
 def cmd_validate(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    _require_checkpoint(p)
-    metrics = run_validation(args.config, checkpoint_path=str(p["checkpoint"]))
-    out = p["final_dir"] / "val_metrics.json"
-    _write_json(out, metrics)
+    ckpt = _require_checkpoint(p, getattr(args, "checkpoint", None))
+    metrics = run_validation(args.config, checkpoint_path=str(ckpt))
+    _write_json(p["final_dir"] / "val_metrics.json", metrics)
     print(json.dumps(metrics, indent=2))
     return metrics
 
 
 def cmd_test(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    _require_checkpoint(p)
-    checkpoint = args.checkpoint or str(p["checkpoint"])
-    metrics = run_test(config_path=args.config, checkpoint_path=checkpoint, out_dir=p["test_dir"])
-    _copy_if_exists(p["test_dir"] / "test_metrics.json", p["final_dir"] / "test_metrics.json")
+    ckpt = _require_checkpoint(p, getattr(args, "checkpoint", None))
+    metrics = run_test(config_path=args.config, checkpoint_path=str(ckpt), out_dir=p["test_dir"])
+    _copy_if_exists(p["test_dir"] / "test_metrics.json",   p["final_dir"] / "test_metrics.json")
     _copy_if_exists(p["test_dir"] / "confusion_matrix.png", p["final_dir"] / "confusion_matrix.png")
     print(json.dumps(metrics, indent=2))
     return metrics
 
 
 def cmd_zero_shot(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    _require_checkpoint(p)
-    checkpoint = args.checkpoint or str(p["checkpoint"])
+    ckpt = _require_checkpoint(p, getattr(args, "checkpoint", None))
     build_family_prototypes(
         config_path=args.config,
-        checkpoint_path=checkpoint,
+        checkpoint_path=str(ckpt),
         manifest_path=str(p["train_manifest"]),
         output_path=str(p["prototype_bank"]),
     )
     metrics = evaluate_zero_shot(
         config_path=args.config,
-        checkpoint_path=checkpoint,
+        checkpoint_path=str(ckpt),
         manifest_path=str(p["test_manifest"]),
         prototype_path=str(p["prototype_bank"]),
         out_dir=p["zero_shot_dir"],
@@ -185,98 +222,144 @@ def cmd_zero_shot(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> di
 
 
 def cmd_export(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    _require_checkpoint(p)
-    checkpoint = args.checkpoint or str(p["checkpoint"])
-    exported = export_checkpoint(Path(checkpoint), Path(args.config), p["export_output"])
+    ckpt = _require_checkpoint(p, getattr(args, "checkpoint", None))
+    exported = export_checkpoint(ckpt, Path(args.config), p["export_output"])
     _copy_if_exists(p["export_output"], p["final_dir"] / "xnerf_local_inference.pt")
     result = {"exported": str(exported)}
     print(json.dumps(result, indent=2))
     return result
 
 
-def cmd_all(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
-    summary: dict[str, Any] = {"config": args.config, "steps": {}}
-    summary["steps"]["build_manifest"] = cmd_build_manifest(cfg, p, args)
-    summary["steps"]["train"] = cmd_train(cfg, p, args)
-    summary["steps"]["validate"] = cmd_validate(cfg, p, args)
-    summary["steps"]["test"] = cmd_test(cfg, p, args)
-    summary["steps"]["zero_shot"] = cmd_zero_shot(cfg, p, args)
-    summary["steps"]["export"] = cmd_export(cfg, p, args)
+# ---------------------------------------------------------------------------
+# Monolithic pipeline (original behaviour, now a subcommand)
+# ---------------------------------------------------------------------------
+
+def run_kaggle_pipeline(
+    config_path: str = "xnerf/configs/kaggle.yaml",
+    skip_extract: bool = False,
+    rebuild_manifests: bool = False,
+) -> dict[str, Any]:
+    """Run the complete Kaggle workflow in one call.
+
+    Steps:
+        1. Extract archives → data/raw.
+        2. Build full/train/val/test manifests.
+        3. Train and checkpoint best.pt.
+        4. Validate on val split.
+        5. Evaluate the held-out test split.
+        6. Build and evaluate zero-shot prototype bank.
+        7. Export local inference checkpoint.
+        8. Write combined summary JSON.
+    """
+    cfg = load_config(config_path)
+    p = _resolve_paths(cfg)
+    p["final_dir"].mkdir(parents=True, exist_ok=True)
+
+    # Build a fake namespace so the stage functions work unchanged.
+    class _Args:
+        config = config_path
+        skip_extract = False
+        rebuild_manifests = False
+        force = False
+        checkpoint = None
+
+    fake_args = _Args()
+    fake_args.skip_extract = skip_extract
+    fake_args.rebuild_manifests = rebuild_manifests
+
+    summary: dict[str, Any] = {"config": config_path, "steps": {}}
+
+    summary["steps"]["build_manifest"] = cmd_build_manifest(cfg, p, fake_args)
+    summary["steps"]["train"]          = cmd_train(cfg, p, fake_args)
+    summary["steps"]["validate"]       = cmd_validate(cfg, p, fake_args)
+    summary["steps"]["test"]           = cmd_test(cfg, p, fake_args)
+    summary["steps"]["zero_shot"]      = cmd_zero_shot(cfg, p, fake_args)
+    summary["steps"]["export"]         = cmd_export(cfg, p, fake_args)
+
+    test_metrics      = summary["steps"]["test"]
+    zero_shot_metrics = summary["steps"]["zero_shot"]
+    summary["metrics"] = {
+        "accuracy":                    test_metrics.get("accuracy"),
+        "precision":                   test_metrics.get("precision"),
+        "recall":                      test_metrics.get("recall"),
+        "f1":                          test_metrics.get("f1"),
+        "roc_auc":                     test_metrics.get("roc_auc"),
+        "cross_architecture_accuracy": test_metrics.get("cross_architecture_accuracy"),
+        "zero_shot_accuracy":          zero_shot_metrics.get("zero_shot_accuracy"),
+        "zero_shot_f1":                zero_shot_metrics.get("zero_shot_f1"),
+    }
+
+    summary["final_output_dir"] = str(p["final_dir"])
+    summary["final_files"] = _collect_final_files(p)
+
     _write_json(p["final_dir"] / "summary.json", summary)
-    print("\n=== Pipeline complete ===")
     print(json.dumps(summary, indent=2))
     return summary
 
 
-# ---------------------------------------------------------------------------
-# Guard helpers
-# ---------------------------------------------------------------------------
-
-def _require_checkpoint(p: dict[str, Path]) -> None:
-    if not p["checkpoint"].exists():
-        raise FileNotFoundError(
-            f"Checkpoint not found: {p['checkpoint']}\n"
-            "Run 'train' first, or pass --checkpoint <path>."
-        )
+def cmd_pipeline(cfg: dict, p: dict[str, Path], args: argparse.Namespace) -> dict[str, Any]:
+    """Subcommand handler that delegates to run_kaggle_pipeline."""
+    return run_kaggle_pipeline(
+        config_path=args.config,
+        skip_extract=getattr(args, "skip_extract", False),
+        rebuild_manifests=getattr(args, "rebuild_manifests", False),
+    )
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
-def _add_common_args(sub: argparse.ArgumentParser) -> None:
+def _add_common(sub: argparse.ArgumentParser) -> None:
     sub.add_argument("--config", default="xnerf/configs/kaggle.yaml")
 
 
-def _add_checkpoint_arg(sub: argparse.ArgumentParser) -> None:
+def _add_ckpt(sub: argparse.ArgumentParser) -> None:
     sub.add_argument("--checkpoint", default=None, help="Override checkpoint path")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="X-NERF++ Kaggle pipeline — run stages independently",
+        description="X-NERF++ Kaggle pipeline",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
     subs = parser.add_subparsers(dest="command", required=True)
 
-    # build-manifest
+    # --- monolithic --------------------------------------------------------
+    p_pipe = subs.add_parser("pipeline", help="Run all stages end-to-end (original behaviour)")
+    _add_common(p_pipe)
+    p_pipe.add_argument("--skip-extract", action="store_true",
+                        help="Skip archive extraction (use existing data/raw)")
+    p_pipe.add_argument("--rebuild-manifests", action="store_true",
+                        help="Force manifest rebuild even if split files already exist")
+
+    # --- split stages ------------------------------------------------------
     p_bm = subs.add_parser("build-manifest", help="Extract archives and build manifests")
-    _add_common_args(p_bm)
-    p_bm.add_argument("--skip-extract", action="store_true")
-    p_bm.add_argument("--rebuild-manifests", action="store_true")
+    _add_common(p_bm)
+    p_bm.add_argument("--skip-extract",       action="store_true")
+    p_bm.add_argument("--rebuild-manifests",  action="store_true")
 
-    # train
     p_tr = subs.add_parser("train", help="Train the model")
-    _add_common_args(p_tr)
-    p_tr.add_argument("--force", action="store_true", help="Retrain even if train_done.json exists")
+    _add_common(p_tr)
+    p_tr.add_argument("--force", action="store_true",
+                      help="Retrain even if train_done.json already exists")
 
-    # validate
     p_va = subs.add_parser("validate", help="Validate on the val split")
-    _add_common_args(p_va)
-    _add_checkpoint_arg(p_va)
+    _add_common(p_va)
+    _add_ckpt(p_va)
 
-    # test
     p_te = subs.add_parser("test", help="Evaluate on the test split")
-    _add_common_args(p_te)
-    _add_checkpoint_arg(p_te)
+    _add_common(p_te)
+    _add_ckpt(p_te)
 
-    # zero-shot
     p_zs = subs.add_parser("zero-shot", help="Build prototypes and evaluate zero-shot")
-    _add_common_args(p_zs)
-    _add_checkpoint_arg(p_zs)
+    _add_common(p_zs)
+    _add_ckpt(p_zs)
 
-    # export
     p_ex = subs.add_parser("export", help="Export local-inference checkpoint")
-    _add_common_args(p_ex)
-    _add_checkpoint_arg(p_ex)
-
-    # all
-    p_al = subs.add_parser("all", help="Run the full pipeline end-to-end")
-    _add_common_args(p_al)
-    p_al.add_argument("--skip-extract", action="store_true")
-    p_al.add_argument("--rebuild-manifests", action="store_true")
-    p_al.add_argument("--force", action="store_true")
+    _add_common(p_ex)
+    _add_ckpt(p_ex)
 
     args = parser.parse_args()
     cfg = load_config(args.config)
@@ -284,13 +367,13 @@ def main() -> None:
     p["final_dir"].mkdir(parents=True, exist_ok=True)
 
     dispatch = {
+        "pipeline":       cmd_pipeline,
         "build-manifest": cmd_build_manifest,
-        "train": cmd_train,
-        "validate": cmd_validate,
-        "test": cmd_test,
-        "zero-shot": cmd_zero_shot,
-        "export": cmd_export,
-        "all": cmd_all,
+        "train":          cmd_train,
+        "validate":       cmd_validate,
+        "test":           cmd_test,
+        "zero-shot":      cmd_zero_shot,
+        "export":         cmd_export,
     }
     dispatch[args.command](cfg, p, args)
 
