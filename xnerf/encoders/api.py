@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import inspect
 import torch
 from torch import nn
 
@@ -25,6 +25,9 @@ class APIEncoder(BaseModule):
         self.token = nn.Embedding(vocab_size, hidden_dim, padding_idx=0)
         self.pos = nn.Embedding(max_len, hidden_dim)
         layer = nn.TransformerEncoderLayer(hidden_dim, heads, hidden_dim * 4, dropout=0.1, batch_first=True, activation="gelu")
+        encoder_kwargs = {"num_layers": layers}
+        if "enable_nested_tensor" in inspect.signature(nn.TransformerEncoder).parameters:
+            encoder_kwargs["enable_nested_tensor"] = False
         self.encoder = nn.TransformerEncoder(layer, num_layers=layers)
         self.proj = nn.Linear(hidden_dim, out_dim)
 
