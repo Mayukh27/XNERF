@@ -29,13 +29,15 @@ class NetworkEncoder(BaseModule):
         encoder_kwargs = {"num_layers": layers}
         if "enable_nested_tensor" in inspect.signature(nn.TransformerEncoder).parameters:
             encoder_kwargs["enable_nested_tensor"] = False
-        self.encoder = nn.TransformerEncoder(layer, num_layers=layers)
+        self.encoder = nn.TransformerEncoder(layer, **encoder_kwargs)
         self.proj = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, network_ids: torch.Tensor) -> torch.Tensor:
         b, t = network_ids.shape
         pos = torch.arange(t, device=network_ids.device).unsqueeze(0).expand(b, t)
         mask = network_ids.eq(0)
+        all_pad = mask.all(dim=1, keepdim=True)
+        mask = mask & ~all_pad
         h = self.token(network_ids) + self.pos(pos)
         h = self.encoder(h, src_key_padding_mask=mask)
         denom = (~mask).sum(dim=1, keepdim=True).clamp_min(1)

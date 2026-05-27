@@ -29,16 +29,17 @@
 
 
 
-#python -m xnerf.pipeline.kaggle_run build-manifest --config xnerf/configs/kaggle.yaml
-#python -m xnerf.pipeline.kaggle_run train           --config xnerf/configs/kaggle.yaml
-# -- save outputs, start a new session, load checkpoint as dataset --
-#python -m xnerf.pipeline.kaggle_run test            --config xnerf/configs/kaggle.yaml
-#python -m xnerf.pipeline.kaggle_run zero-shot       --config xnerf/configs/kaggle.yaml
-#python -m xnerf.pipeline.kaggle_run export          --config xnerf/configs/kaggle.yaml
+# Kaggle — across sessions
+#python -m xnerf.pipeline.kaggle_run build-manifest
+#python -m xnerf.pipeline.kaggle_run train
+# --- save checkpoint as dataset, new session ---
+#python -m xnerf.pipeline.kaggle_run validate
+#python -m xnerf.pipeline.kaggle_run test
+#python -m xnerf.pipeline.kaggle_run zero-shot
+#python -m xnerf.pipeline.kaggle_run export
 
-
+# Local
 #python -m xnerf.pipeline.local_run build-manifest
 #python -m xnerf.pipeline.local_run train
-#python -m xnerf.pipeline.local_run test
-# point at a specific checkpoint without retraining:
+#python -m xnerf.pipeline.local_run validate --config config.yaml
 #python -m xnerf.pipeline.local_run test --checkpoint checkpoints/epoch3.pt
