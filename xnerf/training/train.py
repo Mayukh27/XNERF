@@ -1,8 +1,13 @@
-"""train.py — standalone training and validation entry-points.
+"""train.py — training and validation entry-points.
 
-Called directly by kaggle_run.py / local_run.py, but also usable standalone:
+Called by kaggle_run.py and local_run.py, but also usable standalone:
+
+    # Train
     python -m xnerf.training.train --config config.yaml
+
+    # Validate an existing checkpoint
     python -m xnerf.training.train --config config.yaml --validate-only
+    python -m xnerf.training.train --config config.yaml --validate-only --checkpoint checkpoints/best.pt
 """
 from __future__ import annotations
 
@@ -10,9 +15,13 @@ import argparse
 import json
 from pathlib import Path
 
+import numpy as np
 import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from xnerf.datasets.loaders import MalwareManifestDataset
+from xnerf.evaluation.evaluate import evaluate_predictions
 from xnerf.evaluation.test_after_training import load_model
 from xnerf.model import XNERFPlusPlus
 from xnerf.training.trainer import XNerfTrainer
@@ -20,13 +29,19 @@ from xnerf.utils.base import move_to_device
 from xnerf.utils.config import load_config
 from xnerf.utils.seed import seed_everything
 
+# Keys forwarded to XNerfTrainer; anything else in cfg["training"] is ignored.
+_TRAINER_KEYS = {
+    "batch_size", "lr", "epochs", "grad_accum",
+    "num_workers", "checkpoint_dir", "patience",
+}
+
 
 def run_training(config_path: str = "config.yaml") -> dict:
-    """Train the model and return metrics dict.
+    """Train the model and return a metrics dict.
 
     Writes:
-        <checkpoint_dir>/best.pt          — best checkpoint
-        runs/train_metrics.json           — metrics (also returned)
+        <checkpoint_dir>/best.pt      — best checkpoint (via XNerfTrainer)
+        runs/train_metrics.json       — metrics (also returned)
     """
     cfg = load_config(config_path)
     seed_everything(cfg.get("seed", 1337))
@@ -40,13 +55,7 @@ def run_training(config_path: str = "config.yaml") -> dict:
         num_families=cfg["model"]["num_families"],
     )
 
-    # Strip keys not accepted by XNerfTrainer so the config can include extras.
-    trainer_keys = {
-        "batch_size", "lr", "epochs", "grad_accum",
-        "num_workers", "checkpoint_dir", "patience",
-    }
-    trainer_kwargs = {k: v for k, v in cfg["training"].items() if k in trainer_keys}
-
+    trainer_kwargs = {k: v for k, v in cfg["training"].items() if k in _TRAINER_KEYS}
     trainer = XNerfTrainer(model, train_ds, val_ds, **trainer_kwargs)
     metrics = trainer.fit()
 
@@ -62,11 +71,12 @@ def run_training(config_path: str = "config.yaml") -> dict:
 def run_validation(config_path: str = "config.yaml", checkpoint_path: str | None = None) -> dict:
     """Run the validation loop on the val split and return metrics.
 
+    Loads the checkpoint, runs inference on val_manifest, and computes
+    the same metrics as the test stage (accuracy, F1, ROC-AUC, etc.).
+
     Writes:
         runs/val_metrics.json
     """
-    from tqdm import tqdm
-
     cfg = load_config(config_path)
     val_manifest = cfg["data"].get("val_manifest")
     if not val_manifest:
@@ -79,10 +89,6 @@ def run_validation(config_path: str = "config.yaml", checkpoint_path: str | None
         or (Path(cfg["training"]["checkpoint_dir"]) / "best.pt")
     )
     model = load_model(ckpt_path, cfg, device)
-
-    from torch.utils.data import DataLoader
-    import numpy as np
-    from xnerf.evaluation.evaluate import evaluate_predictions
 
     ds = MalwareManifestDataset(val_manifest)
     loader = DataLoader(
@@ -115,9 +121,13 @@ def main() -> None:
     parser.add_argument(
         "--validate-only",
         action="store_true",
-        help="Skip training; just run the validation loop on an existing checkpoint",
+        help="Skip training; run the validation loop on an existing checkpoint",
     )
-    parser.add_argument("--checkpoint", default=None, help="Checkpoint for --validate-only")
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint path for --validate-only (defaults to config checkpoint_dir/best.pt)",
+    )
     args = parser.parse_args()
 
     if args.validate_only:
