@@ -36,28 +36,15 @@ def evaluate_zero_shot(config_path: str, checkpoint_path: str, manifest_path: st
         if not keep:
             continue
         batch = move_to_device(batch, device)
-        batch = {
-             k: v[keep] if torch.is_tensor(v) and len(v) == len(families) else v
-             for k, v in batch.items()
-            }
         outputs = model(batch)
         zs = classifier(outputs["zero_shot_embedding"])
         pred = zs["prediction"].detach().cpu().numpy()
         prob = zs["probabilities"].detach().cpu().numpy()
-        for j, i in enumerate(keep):
+        for i in keep:
             y_true.append(label_to_id[families[i]])
-            y_pred.append(int(pred[j]))
-            probs.append(prob[j])
-    
-    print("\nSample predictions:")
+            y_pred.append(int(pred[i]))
+            probs.append(prob[i])
 
-    for i in range(min(20, len(y_true))):
-         true_label = bank["labels"][y_true[i]]
-         pred_label = bank["labels"][y_pred[i]]
-
-         print(
-              f"True: {true_label:15} | Pred: {pred_label:15}"
-            )
     if not y_true:
         metrics = {"zero_shot_accuracy": None, "zero_shot_f1": None, "message": "No test families matched prototype labels."}
     else:
