@@ -73,3 +73,65 @@ def test_public_labels_csv_is_metadata_not_sample(tmp_path: Path):
     assert len(rows) == 1
     assert rows[0]["label"] == 1
     assert rows[0]["family"] == "trojan"
+
+
+def test_api_name_sequence_csv_becomes_dynamic_rows(tmp_path: Path):
+    csv_dir = tmp_path / "raw" / "MalBehavD-V1"
+    csv_dir.mkdir(parents=True)
+    csv_path = csv_dir / "MalBehavD-V1-dataset.csv"
+    csv_path.write_text(
+        "sha256,labels,0,1,2\n"
+        "abc1234567890123,0,LdrLoadDll,NtCreateFile,RegOpenKeyExW\n"
+        "def1234567890123,1,NtClose,,GetSystemInfo\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "processed" / "manifest.jsonl"
+
+    build_manifest(tmp_path, out, make_splits=False)
+
+    rows = read_jsonl(out)
+    assert len(rows) == 2
+    assert rows[0]["data_type"] == "api_sequence_csv"
+    assert rows[0]["api_call_count"] == 3
+    assert rows[0]["label"] == 0
+    assert rows[1]["api_call_count"] == 2
+
+
+def test_numeric_api_sequence_csv_becomes_dynamic_rows(tmp_path: Path):
+    csv_dir = tmp_path / "raw" / "MalwareAnalysisDatasetsAPICallSequences"
+    csv_dir.mkdir(parents=True)
+    csv_path = csv_dir / "dynamic_api_call_sequence_per_malware_100_0_306.csv"
+    csv_path.write_text(
+        "hash,t_0,t_1,t_2,malware\n"
+        "071e8c3f8922e186e57548cd4c703a5d,112,274,158,1\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "processed" / "manifest.jsonl"
+
+    build_manifest(tmp_path, out, make_splits=False)
+
+    rows = read_jsonl(out)
+    assert len(rows) == 1
+    assert rows[0]["data_type"] == "api_sequence_csv"
+    assert rows[0]["api_call_count"] == 3
+    assert rows[0]["label"] == 1
+
+
+def test_malapi_text_sequences_use_line_labels(tmp_path: Path):
+    raw_dir = tmp_path / "raw" / "MalAPI2019" / "Mal-API-2019" / "mal-api-2019"
+    raw_dir.mkdir(parents=True)
+    (raw_dir.parent / "labels.csv").write_text("Trojan\nBackdoor\n", encoding="utf-8")
+    (raw_dir / "all_analysis_data.txt").write_text(
+        "ldrloaddll ldrgetprocedureaddress ntclose\n"
+        "getsysteminfo ntcreatefile\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "processed" / "manifest.jsonl"
+
+    build_manifest(tmp_path, out, make_splits=False)
+
+    rows = read_jsonl(out)
+    assert len(rows) == 2
+    assert rows[0]["data_type"] == "api_sequence_txt"
+    assert rows[0]["family"] == "Trojan"
+    assert rows[1]["api_call_count"] == 2

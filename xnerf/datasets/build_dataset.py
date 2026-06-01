@@ -98,7 +98,7 @@ ID_COLUMNS = {
     "id",
 }
 
-LABEL_COLUMNS = {"label", "class", "category", "verdict", "is_malware", "malware", "type"}
+LABEL_COLUMNS = {"label", "labels", "class", "category", "verdict", "is_malware", "malware", "type"}
 FAMILY_COLUMNS = {"family", "malware_family", "class_name", "category_name"}
 
 SPLIT_ALIASES = {
@@ -125,6 +125,28 @@ def normalize_split(value: str | None) -> str | None:
         return None
     key = value.strip().lower()
     return SPLIT_ALIASES.get(key)
+
+
+def top_level_dataset(path: Path, raw: Path) -> str:
+    relative = path.relative_to(raw)
+    return relative.parts[0] if len(relative.parts) else "unknown"
+
+
+def print_parse_folder(path: Path, raw: Path, current: Path | None) -> Path:
+    folder = path.parent
+    if folder != current:
+        try:
+            display = folder.relative_to(raw)
+        except ValueError:
+            display = folder
+        print(f"Parsing folder: {display}")
+    return folder
+
+
+def should_skip_manifest_path(path: Path) -> bool:
+    if path.name.startswith(".extracted_"):
+        return True
+    return path.suffix.lower() in {".zip", ".7z", ".rar"}
 
 
 def infer_split_from_path(path: Path) -> str | None:
@@ -195,6 +217,17 @@ def build_memory_trace(features: list[float], rows: int = 512, cols: int = 8):
     return out.view(rows, cols)
 
 
+def feature_tensor_path(feature_cache: Path, file_key: str, source_name: str, row_index: int, sample_id: str) -> Path:
+    """Return a short, sharded cache path for per-row feature tensors."""
+
+    source = safe_name(source_name, "features")[:32]
+    sample_key = hashlib.sha256(sample_id.encode("utf-8", errors="ignore")).hexdigest()[:12]
+    shard = f"{file_key}_{row_index // 10_000:05d}"
+    folder = feature_cache / file_key[:2] / shard
+    folder.mkdir(parents=True, exist_ok=True)
+    return folder / f"{source}_{row_index}_{sample_key}.pt"
+
+
 def safe_name(value: str, fallback: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("._")
     return (cleaned or fallback)[:80]
@@ -208,6 +241,152 @@ def row_features(row: list[str], numeric_indexes: list[int]) -> list[float]:
             if value is not None:
                 features.append(value)
     return features
+
+
+def api_sequence_column_indexes(headers: list[str]) -> list[int]:
+    normalized = [norm_col(h) for h in headers]
+    skip = ID_COLUMNS | LABEL_COLUMNS | FAMILY_COLUMNS | {"split", "subset"}
+    indexes = []
+    for i, name in enumerate(normalized):
+        if name in skip:
+            continue
+        if re.fullmatch(r"(?:t_)?\d+", name) or re.fullmatch(r"api(?:_call)?_?\d+", name):
+            indexes.append(i)
+    return indexes
+
+
+def is_api_sequence_csv(path: Path, first_row: list[str]) -> bool:
+    header_names = {norm_col(h) for h in first_row}
+    has_metadata = bool(header_names & ID_COLUMNS) and bool(header_names & (LABEL_COLUMNS | {"malware"}))
+    indexes = api_sequence_column_indexes(first_row)
+    if has_metadata and len(indexes) >= 3:
+        return True
+    if not _looks_like_header(first_row):
+        return False
+    text = str(path).lower()
+    return "apicallsequence" in text.replace("_", "") and bool(indexes)
+
+
+def process_api_sequence_csv(
+    path: Path,
+    raw: Path,
+    max_rows_per_csv: int | None = None,
+    row_sink: Callable[[dict], None] | None = None,
+) -> tuple[list[dict], int]:
+    rows: list[dict] = []
+    count = 0
+    dataset = top_level_dataset(path, raw)
+    default_label = infer_label(path)
+    default_family = feature_family_from_path(path)
+    split_hint = infer_split_from_path(path)
+    file_hash = sha256_file(path)
+    with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+        reader = csv.reader(f)
+        headers = next(reader, [])
+        if not headers:
+            return rows, count
+        seq_indexes = api_sequence_column_indexes(headers)
+        if not seq_indexes:
+            return rows, count
+        id_idx = column_index(headers, ID_COLUMNS)
+        label_idx = column_index(headers, LABEL_COLUMNS)
+        family_idx = column_index(headers, FAMILY_COLUMNS)
+        for idx, row in enumerate(reader):
+            if max_rows_per_csv is not None and count >= max_rows_per_csv:
+                break
+            if not row:
+                continue
+            calls = [row[i].strip() for i in seq_indexes if i < len(row) and row[i].strip()]
+            if not calls:
+                continue
+            sample_id = row[id_idx].strip() if id_idx is not None and id_idx < len(row) else f"{path.stem}_{idx}"
+            sample_id = sample_id or f"{path.stem}_{idx}"
+            label = default_label
+            if label_idx is not None and label_idx < len(row):
+                label = parse_label_value(row[label_idx], default=label)
+            family = default_family
+            if family_idx is not None and family_idx < len(row) and row[family_idx].strip():
+                family = row[family_idx].strip()
+            record = {
+                "path": str(path),
+                "row_index": idx,
+                "sample_id": sample_id,
+                "sha256": sample_id if len(sample_id) >= 16 else f"{file_hash}:{idx}",
+                "dataset": dataset,
+                "data_type": "api_sequence_csv",
+                "api_ids": tokens_to_ids(calls, vocab_size=8192, max_len=256, prefix="api"),
+                "api_call_count": len(calls),
+                "network_ids": [],
+                "network_event_count": 0,
+                "label": label,
+                "family": family,
+                "arch": infer_arch(path),
+            }
+            if split_hint:
+                record["split"] = split_hint
+            if row_sink:
+                row_sink(record)
+            else:
+                rows.append(record)
+            count += 1
+    return rows, count
+
+
+def load_line_labels(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    labels = []
+    with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+        for row in csv.reader(f):
+            if row and row[0].strip():
+                labels.append(row[0].strip())
+    return labels
+
+
+def process_api_sequence_txt(
+    path: Path,
+    raw: Path,
+    max_rows: int | None = None,
+    row_sink: Callable[[dict], None] | None = None,
+) -> tuple[list[dict], int]:
+    rows: list[dict] = []
+    count = 0
+    dataset = top_level_dataset(path, raw)
+    split_hint = infer_split_from_path(path)
+    labels = load_line_labels(path.parent.parent / "labels.csv") or load_line_labels(path.parent / "labels.csv")
+    file_hash = sha256_file(path)
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for idx, line in enumerate(f):
+            if max_rows is not None and count >= max_rows:
+                break
+            calls = [token for token in line.strip().split() if token]
+            if not calls:
+                continue
+            family = labels[idx] if idx < len(labels) else path.stem
+            sample_id = f"{path.stem}_{idx}"
+            record = {
+                "path": str(path),
+                "row_index": idx,
+                "sample_id": sample_id,
+                "sha256": f"{file_hash}:{idx}",
+                "dataset": dataset,
+                "data_type": "api_sequence_txt",
+                "api_ids": tokens_to_ids(calls, vocab_size=8192, max_len=256, prefix="api"),
+                "api_call_count": len(calls),
+                "network_ids": [],
+                "network_event_count": 0,
+                "label": 1,
+                "family": family,
+                "arch": infer_arch(path),
+            }
+            if split_hint:
+                record["split"] = split_hint
+            if row_sink:
+                row_sink(record)
+            else:
+                rows.append(record)
+            count += 1
+    return rows, count
 
 
 def process_feature_csv(
@@ -245,11 +424,11 @@ def process_feature_csv(
         reader = csv.reader(f)
         first = next(reader, [])
         if not first:
-            return rows
+            return rows, count
         has_header = _looks_like_header(first)
         if has_header and is_label_map_csv(path, first):
             print(f"Loaded label-map CSV metadata, not training samples: {path}")
-            return rows
+            return rows, count
         id_idx = 0
         label_idx = None
         family_idx = None
@@ -286,7 +465,7 @@ def process_feature_csv(
                 continue
             import torch
 
-            feature_path = feature_cache / f"{file_key}_{safe_name(path.stem, 'csv')}_{idx}_{safe_name(sample_id, 'sample')[:16]}.pt"
+            feature_path = feature_tensor_path(feature_cache, file_key, path.stem, idx, sample_id)
             torch.save(build_memory_trace(features), feature_path)
             mapped = label_maps.get(sample_id, {})
             label = mapped.get("label", default_label)
@@ -412,7 +591,7 @@ def process_feature_parquet(
 
             import torch
 
-            feature_path = feature_cache / f"{file_key}_{safe_name(path.stem, 'parquet')}_{row_index}_{safe_name(sample_id, 'sample')[:16]}.pt"
+            feature_path = feature_tensor_path(feature_cache, file_key, path.stem, row_index, sample_id)
             torch.save(build_memory_trace(list(features)), feature_path)
             mapped = label_maps.get(sample_id, {})
             label = mapped.get("label", default_label)
@@ -633,13 +812,27 @@ def build_manifest(
                     test_f.write(json.dumps(row, sort_keys=True) + "\n")
                 counts[split] += 1
 
-            for path in scan_root.rglob("*"):
-                if not path.is_file() or path.suffix.lower() in {".zip", ".7z", ".rar"}:
+            current_folder = None
+            for path in sorted(scan_root.rglob("*")):
+                if not path.is_file() or should_skip_manifest_path(path):
                     continue
+                current_folder = print_parse_folder(path, raw, current_folder)
                 marker = progress_dir / f"{_progress_key(path)}.done"
                 if resume and marker.exists():
                     continue
                 if path.suffix.lower() == ".csv":
+                    with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+                        first = next(csv.reader(f), [])
+                    if is_api_sequence_csv(path, first):
+                        _, count = process_api_sequence_csv(
+                            path,
+                            raw=raw,
+                            max_rows_per_csv=max_rows_per_csv,
+                            row_sink=emit_row,
+                        )
+                        print(f"Parsed {count} API sequence rows from {path}")
+                        marker.write_text(str(path), encoding="utf-8")
+                        continue
                     _, count = process_feature_csv(
                         path,
                         raw=raw,
@@ -649,6 +842,16 @@ def build_manifest(
                         row_sink=emit_row,
                     )
                     print(f"Parsed {count} feature rows from {path}")
+                    marker.write_text(str(path), encoding="utf-8")
+                    continue
+                if path.suffix.lower() == ".txt" and path.name.lower() == "all_analysis_data.txt":
+                    _, count = process_api_sequence_txt(
+                        path,
+                        raw=raw,
+                        max_rows=max_rows_per_csv,
+                        row_sink=emit_row,
+                    )
+                    print(f"Parsed {count} API sequence rows from {path}")
                     marker.write_text(str(path), encoding="utf-8")
                     continue
                 if path.suffix.lower() == ".parquet":
@@ -695,10 +898,23 @@ def build_manifest(
             print(f"Wrote split manifests to {out.parent}: {{'train': {counts['train']}, 'val': {counts['val']}, 'test': {counts['test']}}}")
         return
 
-    for path in scan_root.rglob("*"):
-        if not path.is_file() or path.suffix.lower() in {".zip", ".7z", ".rar"}:
+    current_folder = None
+    for path in sorted(scan_root.rglob("*")):
+        if not path.is_file() or should_skip_manifest_path(path):
             continue
+        current_folder = print_parse_folder(path, raw, current_folder)
         if path.suffix.lower() == ".csv":
+            with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+                first = next(csv.reader(f), [])
+            if is_api_sequence_csv(path, first):
+                api_rows, count = process_api_sequence_csv(
+                    path,
+                    raw=raw,
+                    max_rows_per_csv=max_rows_per_csv,
+                )
+                rows.extend(api_rows)
+                print(f"Parsed {count} API sequence rows from {path}")
+                continue
             csv_rows, count = process_feature_csv(
                 path,
                 raw=raw,
@@ -708,6 +924,15 @@ def build_manifest(
             )
             rows.extend(csv_rows)
             print(f"Parsed {count} feature rows from {path}")
+            continue
+        if path.suffix.lower() == ".txt" and path.name.lower() == "all_analysis_data.txt":
+            api_rows, count = process_api_sequence_txt(
+                path,
+                raw=raw,
+                max_rows=max_rows_per_csv,
+            )
+            rows.extend(api_rows)
+            print(f"Parsed {count} API sequence rows from {path}")
             continue
         if path.suffix.lower() == ".parquet":
             parquet_rows, count = process_feature_parquet(
