@@ -25,10 +25,7 @@ This overwrites:
   data\processed\test_manifest.jsonl
 
 Command:
-  python -m xnerf.datasets.build_dataset ^
-    --root data ^
-    --out data/processed/manifest.jsonl ^
-    --split-mode hash
+  python -m xnerf.datasets.build_dataset --root data --out data/processed/manifest.jsonl --split-mode hash
 
 Resume manifest build.
 This appends only files that do not have progress markers in:
@@ -151,3 +148,5 @@ Check MalAPI2019 extracted text exists:
 
 Check MalwareAnalysisDatasetsAPICallSequences extracted CSV exists:
   dir data\raw\MalwareAnalysisDatasetsAPICallSequences /s | findstr dynamic_api_call_sequence
+
+python -m xnerf.training.train --config config.yaml --resume checkpoints\last.pt
