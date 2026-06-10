@@ -33,7 +33,7 @@ from xnerf.utils.seed import seed_everything
 # Keys forwarded to XNerfTrainer; anything else in cfg["training"] is ignored.
 _TRAINER_KEYS = {
     "batch_size", "lr", "epochs", "grad_accum",
-    "num_workers", "checkpoint_dir", "patience", "resume_from",
+    "num_workers", "checkpoint_dir", "patience", "resume_from", "grad_clip",
 }
 
 
