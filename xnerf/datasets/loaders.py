@@ -56,6 +56,7 @@ class MalwareManifestDataset(DatasetLoader):
         feature_path = row.get("feature_path")
         if feature_path and Path(feature_path).exists():
             loaded = torch.load(feature_path, map_location="cpu").float()
+            loaded = torch.nan_to_num(loaded, nan=0.0, posinf=0.0, neginf=0.0)
             if loaded.dim() == 1:
                 loaded = torch.nn.functional.pad(loaded, (0, max(0, self.memory_len * 8 - loaded.numel())))[: self.memory_len * 8].view(self.memory_len, 8)
             out[: min(self.memory_len, loaded.shape[0]), : min(8, loaded.shape[1])] = loaded[: self.memory_len, :8]
@@ -75,6 +76,8 @@ class MalwareManifestDataset(DatasetLoader):
         isr = torch.zeros(self.isr_len, 4, dtype=torch.long)
         if row.get("isr_path") and Path(row["isr_path"]).exists():
             loaded = torch.load(row["isr_path"], map_location="cpu")
+            if loaded.is_floating_point():
+                loaded = torch.nan_to_num(loaded, nan=0.0, posinf=0.0, neginf=0.0)
             isr[: min(self.isr_len, loaded.shape[0])] = loaded[: self.isr_len]
         data_type = row.get("data_type")
         return {
@@ -87,7 +90,11 @@ class MalwareManifestDataset(DatasetLoader):
             "isr": isr,
             "arch_id": torch.tensor(ARCH_TO_ID.get(row.get("arch", "x86"), 0), dtype=torch.long),
             "label": torch.tensor(int(row.get("label", 0)), dtype=torch.long),
+            "dataset": row.get("dataset", "unknown"),
             "family": row.get("family", "unknown"),
+            "path": row.get("path", ""),
+            "row_index": row.get("row_index", index),
+            "sample_id": row.get("sample_id", ""),
             "sha256": row.get("sha256", ""),
         }
 

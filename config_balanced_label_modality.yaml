@@ -1,0 +1,23 @@
+seed: 1337
+data:
+  root: data
+  archive_root: data/archives
+  full_manifest: data/processed/manifest_balanced_label_modality_1079.jsonl
+  train_manifest: data/processed/train_manifest_balanced_label_modality_1079.jsonl
+  val_manifest: data/processed/val_manifest_balanced_label_modality_1079.jsonl
+  test_manifest: data/processed/test_manifest_balanced_label_modality_1079.jsonl
+model:
+  num_classes: 2
+  num_families: 32
+training:
+  batch_size: 32
+  lr: 0.0003
+  epochs: 10
+  grad_accum: 1
+  num_workers: 2
+  grad_clip: 1.0
+  checkpoint_dir: checkpoints_balanced_label_modality
+  patience: 3
+local_inference:
+  checkpoint: models/xnerf_local_inference.pt
+  note: "Strict label/modality balanced local experiment."

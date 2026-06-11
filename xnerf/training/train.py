@@ -4,6 +4,7 @@ Called by kaggle_run.py and local_run.py, but also usable standalone:
 
     # Train
     python -m xnerf.training.train --config config.yaml
+    python -m xnerf.training.train --config config.yaml --resume checkpoints/last.pt
 
     # Validate an existing checkpoint
     python -m xnerf.training.train --config config.yaml --validate-only
@@ -32,11 +33,11 @@ from xnerf.utils.seed import seed_everything
 # Keys forwarded to XNerfTrainer; anything else in cfg["training"] is ignored.
 _TRAINER_KEYS = {
     "batch_size", "lr", "epochs", "grad_accum",
-    "num_workers", "checkpoint_dir", "patience",
+    "num_workers", "checkpoint_dir", "patience", "resume_from", "grad_clip",
 }
 
 
-def run_training(config_path: str = "config.yaml") -> dict:
+def run_training(config_path: str = "config.yaml", resume_from: str | None = None) -> dict:
     """Train the model and return a metrics dict.
 
     Writes:
@@ -56,6 +57,8 @@ def run_training(config_path: str = "config.yaml") -> dict:
     )
 
     trainer_kwargs = {k: v for k, v in cfg["training"].items() if k in _TRAINER_KEYS}
+    if resume_from:
+        trainer_kwargs["resume_from"] = resume_from
     trainer = XNerfTrainer(model, train_ds, val_ds, **trainer_kwargs)
     metrics = trainer.fit()
 
@@ -128,12 +131,17 @@ def main() -> None:
         default=None,
         help="Checkpoint path for --validate-only (defaults to config checkpoint_dir/best.pt)",
     )
+    parser.add_argument(
+        "--resume",
+        default=None,
+        help="Resume training from a full checkpoint, for example checkpoints/last.pt",
+    )
     args = parser.parse_args()
 
     if args.validate_only:
         metrics = run_validation(args.config, checkpoint_path=args.checkpoint)
     else:
-        metrics = run_training(args.config)
+        metrics = run_training(args.config, resume_from=args.resume)
 
     print(json.dumps(metrics, indent=2))
 
