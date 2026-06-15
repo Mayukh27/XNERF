@@ -1,14 +1,53 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 
+from xnerf.datasets.family_cleaning import build_family_vocabulary, load_family_normalization_rules, normalize_family_name
 from xnerf.preprocessing.ontology import ARCH_TO_ID
 from xnerf.utils.base import DatasetLoader
 from xnerf.utils.io import read_jsonl
+
+
+def load_family_vocab(
+    manifest_path: str | Path,
+    rows: list[dict[str, Any]] | None = None,
+    family_vocab_path: str | Path | None = None,
+    family_rules_path: str | Path | None = None,
+) -> tuple[list[str], dict[str, int]]:
+    manifest_path = Path(manifest_path)
+    rules = load_family_normalization_rules(family_rules_path)
+    candidates = [
+        Path(family_vocab_path) if family_vocab_path else None,
+        manifest_path.parent / "family_vocab.json",
+        manifest_path.with_name("family_vocab.json"),
+    ]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        if not candidate.exists():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        family_names = payload.get("family_names") or payload.get("id_to_family") or payload.get("families")
+        if isinstance(family_names, list) and family_names:
+            names = [normalize_family_name(name, rules=rules) for name in family_names]
+            family_to_id = {name: idx for idx, name in enumerate(names)}
+            return names, family_to_id
+    if rows is None:
+        try:
+            rows = read_jsonl(manifest_path)
+        except Exception:
+            rows = []
+    names = build_family_vocabulary(rows, rules=rules)
+    family_to_id = {name: idx for idx, name in enumerate(names)}
+    return names, family_to_id
 
 
 class MalwareManifestDataset(DatasetLoader):
@@ -29,6 +68,8 @@ class MalwareManifestDataset(DatasetLoader):
     def __init__(
         self,
         manifest_path: str | Path,
+        family_vocab_path: str | Path | None = None,
+        family_rules_path: str | Path | None = None,
         image_size: int = 256,
         seq_len: int = 256,
         memory_len: int = 512,
@@ -36,6 +77,15 @@ class MalwareManifestDataset(DatasetLoader):
     ):
         self.manifest_path = Path(manifest_path)
         self.rows = read_jsonl(self.manifest_path)
+        self.family_rules = load_family_normalization_rules(family_rules_path)
+        self.family_names, self.family_to_id = load_family_vocab(
+            self.manifest_path,
+            self.rows,
+            family_vocab_path=family_vocab_path,
+            family_rules_path=family_rules_path,
+        )
+        self.id_to_family = {idx: name for name, idx in self.family_to_id.items()}
+        self.family_rules_path = Path(family_rules_path) if family_rules_path else None
         self.image_size = image_size
         self.seq_len = seq_len
         self.memory_len = memory_len
@@ -73,6 +123,9 @@ class MalwareManifestDataset(DatasetLoader):
     def __getitem__(self, index: int) -> dict[str, Any]:
         row = self.rows[index]
         path = Path(row["path"])
+        family = normalize_family_name(row.get("family", "unknown"), label=row.get("label", 0), rules=self.family_rules)
+        if family not in self.family_to_id:
+            raise KeyError(f"family '{family}' missing from vocabulary for {self.manifest_path}")
         isr = torch.zeros(self.isr_len, 4, dtype=torch.long)
         if row.get("isr_path") and Path(row["isr_path"]).exists():
             loaded = torch.load(row["isr_path"], map_location="cpu")
@@ -90,6 +143,7 @@ class MalwareManifestDataset(DatasetLoader):
             "isr": isr,
             "arch_id": torch.tensor(ARCH_TO_ID.get(row.get("arch", "x86"), 0), dtype=torch.long),
             "label": torch.tensor(int(row.get("label", 0)), dtype=torch.long),
+            "family_label": torch.tensor(self.family_to_id[family], dtype=torch.long),
             "dataset": row.get("dataset", "unknown"),
             "family": row.get("family", "unknown"),
             "path": row.get("path", ""),

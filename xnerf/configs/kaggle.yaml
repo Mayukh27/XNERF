@@ -25,6 +25,8 @@ training:
   num_workers: 4
   checkpoint_dir: /kaggle/working/checkpoints
   patience: 1
+  use_amp: true
+  debug_max_batches:
 
 export:
   checkpoint: /kaggle/working/checkpoints/best.pt

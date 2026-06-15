@@ -8,20 +8,47 @@ import random
 import re
 from pathlib import Path
 from typing import Callable
+from collections import defaultdict
 
+from xnerf.datasets.family_cleaning import build_family_vocabulary, load_family_normalization_rules
+from xnerf.datasets.family_cleaning import normalize_family_name
 from xnerf.preprocessing.pipeline import ArchitectureNormalizationPipeline
 from xnerf.sandbox.cape_parser import parse_cape_report
 from xnerf.utils.io import sha256_file, write_jsonl
 from xnerf.utils.tokenization import tokens_to_ids
 
+# ------------------------------------------------------------------
+# CIC-YNU IoTMal sampling
+# ------------------------------------------------------------------
+
+IOTMAL_FAMILY_SAMPLE_PROBS = {
+    "Mirai": 0.002,
+    "Benign": 0.01,
+    "DarkNexus": 0.10,
+    "Unknown": 0.10,
+    "Gafgyt": 0.20,
+    "Generic": 0.40,
+}
+
+IOTMAL_RANDOM_SEED = 1337
+random.seed(IOTMAL_RANDOM_SEED)
 
 def infer_arch(path: Path) -> str:
-    text = path.name.lower()
-    for arch in ("arm64", "arm", "mips", "riscv", "x64", "x86"):
+    text = str(path).lower()
+    for arch in ("arm64", "arm","mipsel", "mips", "riscv", "x64", "x86"):
         if arch in text:
             return arch
     return "x86"
 
+def should_keep_iotmal_sample(family: str) -> bool:
+    family = str(family).strip()
+
+    keep_prob = IOTMAL_FAMILY_SAMPLE_PROBS.get(
+        family,
+        1.0,  # keep all rare families
+    )
+
+    return random.random() <= keep_prob
 
 def infer_label(path: Path) -> int:
     text = str(path).lower()
@@ -99,7 +126,7 @@ ID_COLUMNS = {
 }
 
 LABEL_COLUMNS = {"label", "labels", "class", "category", "verdict", "is_malware", "malware", "type"}
-FAMILY_COLUMNS = {"family", "malware_family", "class_name", "category_name"}
+FAMILY_COLUMNS = {"family", "malware_family", "class_name", "category_name","malwarefamily","classification_family"}
 
 SPLIT_ALIASES = {
     "train": "train",
@@ -196,6 +223,26 @@ def load_label_maps(raw: Path) -> dict[str, dict]:
         except OSError:
             continue
     return labels
+
+
+def collect_family_names(rows: list[dict], family_rules_path: str | Path | None = None) -> list[str]:
+    rules = load_family_normalization_rules(family_rules_path)
+    return build_family_vocabulary(rows, rules=rules)
+
+
+def write_family_vocab(out_dir: Path, family_names: list[str], family_rules_path: str | Path | None = None) -> Path:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rules = load_family_normalization_rules(family_rules_path)
+    family_names = build_family_vocabulary(({"family": name, "label": 1} for name in family_names), rules=rules)
+    family_to_id = {name: idx for idx, name in enumerate(family_names)}
+    payload = {
+        "family_names": family_names,
+        "family_to_id": family_to_id,
+        "id_to_family": family_names,
+    }
+    path = out_dir / "family_vocab.json"
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
 
 
 def feature_family_from_path(path: Path) -> str:
@@ -577,6 +624,23 @@ def process_feature_parquet(
                 sample_id = str(data[columns[id_col]][i]).strip()
             if not sample_id:
                 sample_id = str(data.get("sha256", [""] * batch_rows)[i]).strip() if "sha256" in data else f"{path.stem}_{row_index}"
+            
+            mapped = label_maps.get(sample_id, {})
+            label = mapped.get("label", default_label)
+            if label_col is not None:
+                label = parse_label_value(data[columns[label_col]][i], default=label)
+            family = mapped.get("family", default_family)
+            if family_col is not None:
+                family_val = str(data[columns[family_col]][i]).strip()
+                if family_val:
+                    family = family_val
+            if dataset == "CIC-YNU_IoTMal":
+                 family_name = str(family).strip()
+                 label = 0 if family_name.lower() == "benign" else 1
+                 if not should_keep_iotmal_sample(family_name):
+                    row_index += 1
+                    continue
+            
             if feature_col:
                 features = data[feature_col][i] or []
             else:
@@ -593,15 +657,13 @@ def process_feature_parquet(
 
             feature_path = feature_tensor_path(feature_cache, file_key, path.stem, row_index, sample_id)
             torch.save(build_memory_trace(list(features)), feature_path)
-            mapped = label_maps.get(sample_id, {})
-            label = mapped.get("label", default_label)
-            if label_col is not None:
-                label = parse_label_value(data[columns[label_col]][i], default=label)
-            family = mapped.get("family", default_family)
-            if family_col is not None:
-                family_val = str(data[columns[family_col]][i]).strip()
-                if family_val:
-                    family = family_val
+            
+            arch = infer_arch(path)
+
+            if "Arch" in data and data["Arch"][i] is not None:
+                arch_val = str(data["Arch"][i]).strip().lower()
+                if arch_val :
+                   arch = arch_val
             row = {
                 "path": str(path),
                 "row_index": row_index,
@@ -613,7 +675,7 @@ def process_feature_parquet(
                 "feature_dim": len(features),
                 "label": label,
                 "family": family,
-                "arch": infer_arch(path),
+                "arch": arch ,
             }
             row_split = normalize_split(str(data[split_col][i])) if split_col else split_hint
             if row_split:
@@ -786,6 +848,7 @@ def build_manifest(
         val_path = split_dir / "val_manifest.jsonl"
         test_path = split_dir / "test_manifest.jsonl"
         counts = {"full": 0, "train": 0, "val": 0, "test": 0}
+        family_names: set[str] = set()
         progress_dir = root / "cache" / "manifest_progress"
         progress_dir.mkdir(parents=True, exist_ok=True)
         mode = "a" if resume else "w"
@@ -797,6 +860,7 @@ def build_manifest(
             def emit_row(row: dict) -> None:
                 manifest_f.write(json.dumps(row, sort_keys=True) + "\n")
                 counts["full"] += 1
+                family_names.add(normalize_family_name(row.get("family", "unknown")))
                 if not make_splits:
                     return
                 split = normalize_split(row.get("split"))
@@ -893,6 +957,7 @@ def build_manifest(
                 print("No new dataset files found to process.")
                 return
             raise RuntimeError(f"No dataset files found under {scan_root}. Missing datasets are allowed, but at least one usable dataset is required.")
+        write_family_vocab(split_dir, sorted(family_names) or ["unknown"])
         print(f"Wrote {counts['full']} manifest rows to {out}")
         if make_splits:
             print(f"Wrote split manifests to {out.parent}: {{'train': {counts['train']}, 'val': {counts['val']}, 'test': {counts['test']}}}")
@@ -967,6 +1032,7 @@ def build_manifest(
         rows.append(record)
     if not rows:
         raise RuntimeError(f"No dataset files found under {raw}. Missing datasets are allowed, but at least one usable dataset is required.")
+    write_family_vocab(out.parent, collect_family_names(rows))
     write_jsonl(out, rows)
     print(f"Wrote {len(rows)} manifest rows to {out}")
     if make_splits:

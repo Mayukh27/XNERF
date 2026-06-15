@@ -17,6 +17,8 @@ training:
   num_workers: 2
   checkpoint_dir: checkpoints
   patience: 2
+  use_amp: false
+  debug_max_batches: 50
 local_inference:
-  checkpoint: models/xnerf_local_inference.pt
+  checkpoint: models/best.pt
   note: "Train on Kaggle; use this PC for API/inference only."

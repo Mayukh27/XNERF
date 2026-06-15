@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 *.pyc
+data/archives/
 data/raw/
 data/cache/
 data/processed/
