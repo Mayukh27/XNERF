@@ -60,11 +60,20 @@ def infer_label(path: Path) -> int:
 def parse_label_value(value: str | int | float | None, default: int = 1) -> int:
     if value is None:
         return default
+
+    try:
+        return 1 if float(value) > 0 else 0
+    except (TypeError, ValueError):
+        pass
+
     text = str(value).strip().lower()
-    if text in {"0", "benign", "goodware", "clean", "false", "normal"}:
+
+    if text in {"0", "b", "benign", "goodware", "clean", "false", "normal"}:
         return 0
-    if text in {"1", "malware", "malicious", "true", "infected"}:
+
+    if text in {"1", "s", "malware", "malicious", "true", "infected"}:
         return 1
+
     return default
 
 
@@ -930,14 +939,19 @@ def build_manifest(
                     print(f"Parsed {count} feature rows from {path}")
                     marker.write_text(str(path), encoding="utf-8")
                     continue
+                
+                sample_id = path.stem
+                mapped = label_maps.get(sample_id, {})
+
                 record = {
-                    "path": str(path),
-                    "sha256": sha256_file(path),
-                    "dataset": path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown",
-                    "label": infer_label(path),
-                    "family": path.parent.name,
-                    "arch": infer_arch(path),
-                }
+                         "path": str(path),
+                         "sample_id": sample_id,
+                         "sha256": sample_id if len(sample_id) >= 16 else sha256_file(path),
+                         "dataset": path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown",
+                         "label": mapped.get("label", infer_label(path)),
+                         "family": mapped.get("family", path.parent.name),
+                         "arch": infer_arch(path),
+                        }
                 record = enrich_dynamic_report(record, path)
                 if path.stat().st_size <= max_binary_bytes and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}:
                     arch = record["arch"]
@@ -1010,14 +1024,18 @@ def build_manifest(
             rows.extend(parquet_rows)
             print(f"Parsed {count} feature rows from {path}")
             continue
+        sample_id = path.stem
+        mapped = label_maps.get(sample_id, {})
+
         record = {
-            "path": str(path),
-            "sha256": sha256_file(path),
-            "dataset": path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown",
-            "label": infer_label(path),
-            "family": path.parent.name,
-            "arch": infer_arch(path),
-        }
+                         "path": str(path),
+                         "sample_id": sample_id,
+                         "sha256": sample_id if len(sample_id) >= 16 else sha256_file(path),
+                         "dataset": path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown",
+                         "label": mapped.get("label", infer_label(path)),
+                         "family": mapped.get("family", path.parent.name),
+                         "arch": infer_arch(path),
+                }
         record = enrich_dynamic_report(record, path)
         if path.stat().st_size <= max_binary_bytes and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}:
             arch = record["arch"]
