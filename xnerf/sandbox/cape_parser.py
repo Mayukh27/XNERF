@@ -59,6 +59,12 @@ def parse_cape_report(path: str | Path, file_name: str | None = None) -> dict:
                 repeats = 1
             api_calls.extend([api] * repeats)
 
+    summary = behavior.get("summary", {})
+    if isinstance(summary, dict):
+        for api in summary.get("resolved_apis", []) or []:
+            if api:
+                api_calls.append(str(api))
+
     network = report.get("network", {})
     network_events = []
     for dns in network.get("dns", []):
@@ -68,6 +74,10 @@ def parse_cape_report(path: str | Path, file_name: str | None = None) -> dict:
     for key in ("tcp", "udp", "icmp", "smtp", "irc"):
         for item in network.get(key, []):
             network_events.append({"type": key, "value": item})
+    if isinstance(summary, dict):
+        for key in ("executed_commands",):
+            for item in summary.get(key, []) or []:
+                network_events.append({"type": key, "value": item})
 
     memory_events = []
     for key in ("memory", "procmemory", "dropped", "signatures"):
@@ -76,6 +86,22 @@ def parse_cape_report(path: str | Path, file_name: str | None = None) -> dict:
             values = values.values()
         for item in values or []:
             memory_events.append({"type": key, "value": item})
+    if isinstance(summary, dict):
+        for key in (
+            "keys",
+            "read_keys",
+            "write_keys",
+            "delete_keys",
+            "files",
+            "read_files",
+            "write_files",
+            "delete_files",
+            "mutexes",
+            "started_services",
+            "created_services",
+        ):
+            for item in summary.get(key, []) or []:
+                memory_events.append({"type": key, "value": item})
 
     target = report.get("target", {})
     info = report.get("info", {})

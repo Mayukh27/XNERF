@@ -34,6 +34,7 @@ from xnerf.utils.seed import seed_everything
 _TRAINER_KEYS = {
     "batch_size", "lr", "epochs", "grad_accum",
     "num_workers", "checkpoint_dir", "patience", "resume_from", "grad_clip",
+    "use_amp", "debug_max_batches",
 }
 
 
@@ -59,7 +60,7 @@ def run_training(config_path: str = "config.yaml", resume_from: str | None = Non
     trainer_kwargs = {k: v for k, v in cfg["training"].items() if k in _TRAINER_KEYS}
     if resume_from:
         trainer_kwargs["resume_from"] = resume_from
-    trainer = XNerfTrainer(model, train_ds, val_ds, **trainer_kwargs)
+    trainer = XNerfTrainer(model, train_ds, val_ds, family_names=getattr(train_ds, "family_names", None), **trainer_kwargs)
     metrics = trainer.fit()
 
     out_dir = Path("runs")

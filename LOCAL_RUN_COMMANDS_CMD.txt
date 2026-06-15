@@ -39,12 +39,7 @@ Command:
     --resume
 
 Build or resume only one dataset:
-  python -m xnerf.datasets.build_dataset ^
-    --root data ^
-    --out data/processed/manifest.jsonl ^
-    --split-mode hash ^
-    --resume ^
-    --only-dataset MalAPI2019
+  python -m xnerf.datasets.build_dataset --root data --out data/processed/manifest.jsonl --split-mode hash --resume --only-dataset MalAPI2019
 
 Other dataset names currently seen:
   AndMal2020
