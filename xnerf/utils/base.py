@@ -98,17 +98,73 @@ def move_to_device(batch: Mapping[str, Any], device: torch.device | str) -> Dict
     return {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in batch.items()}
 
 
-def collate_dicts(items: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
-    """Small robust collator for JSONL-backed examples.
-
-    Tensor values are stacked when dimensions match; variable-size graph values
-    stay as lists for torch_geometric-aware callers.
-    """
-
+def collate_dicts(items):
     items = list(items)
-    out: Dict[str, Any] = {}
+
+    out = {}
+
+    # ----- Graph batching -----
+    has_graph = any(
+        isinstance(x.get("graph_x"), torch.Tensor)
+        and x["graph_x"].numel() > 0
+        for x in items
+    )
+
+    if has_graph:
+        graph_x = []
+        graph_edge_index = []
+        graph_batch = []
+
+        node_offset = 0
+
+        for i, sample in enumerate(items):
+            gx = sample.get("graph_x")
+            ge = sample.get("graph_edge_index")
+
+            if (
+                not isinstance(gx, torch.Tensor)
+                or gx.numel() == 0
+            ):
+                continue
+
+            graph_x.append(gx)
+
+            graph_edge_index.append(
+                ge + node_offset
+            )
+
+            graph_batch.append(
+                torch.full(
+                    (gx.shape[0],),
+                    i,
+                    dtype=torch.long,
+                )
+            )
+
+            node_offset += gx.shape[0]
+
+        out["graph_x"] = torch.cat(graph_x, dim=0)
+        out["graph_edge_index"] = torch.cat(
+            graph_edge_index,
+            dim=1,
+        )
+        out["graph_batch"] = torch.cat(
+            graph_batch,
+            dim=0,
+        )
+
+    # ----- Everything else -----
     for key in items[0].keys():
+
+        if key in {
+            "graph_x",
+            "graph_edge_index",
+            "graph_batch",
+        }:
+            continue
+
         vals = [x[key] for x in items]
+
         if all(isinstance(v, torch.Tensor) for v in vals):
             try:
                 out[key] = torch.stack(vals)
@@ -116,5 +172,5 @@ def collate_dicts(items: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
                 out[key] = vals
         else:
             out[key] = vals
-    return out
 
+    return out

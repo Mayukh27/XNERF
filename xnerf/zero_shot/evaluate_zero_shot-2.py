@@ -26,7 +26,7 @@ from tqdm import tqdm
 
 from xnerf.datasets.loaders import MalwareManifestDataset
 from xnerf.evaluation.test_after_training import load_model
-from xnerf.utils.base import move_to_device
+from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.config import load_config
 from xnerf.zero_shot.prototypes import ZeroShotPrototypeClassifier, load_prototype_bank
 
@@ -52,7 +52,8 @@ def evaluate_zero_shot(
         ds,
         batch_size=cfg["training"].get("batch_size", 4),
         shuffle=False,
-        num_workers=cfg["training"].get("num_workers", 2),
+        num_workers=cfg["training"].get("num_workers", 2), 
+        collate_fn=collate_dicts
     )
 
     y_true, y_pred, probs = [], [], []

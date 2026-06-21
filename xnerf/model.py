@@ -12,7 +12,7 @@ from xnerf.fields.mnef import MNEF
 from xnerf.renderer.trajectory_decoder import TrajectoryDecoder
 from xnerf.synchronization.sfs import SemanticFieldSynchronizer
 from xnerf.utils.base import BaseModule
-
+from xnerf.encoders.cfg import CFGEncoder
 
 class XNERFPlusPlus(BaseModule):
     """End-to-end X-NERF++ model.
@@ -36,6 +36,7 @@ class XNERFPlusPlus(BaseModule):
         self.field_time = field_time
         self.binary = BinaryImageEncoder() if use_binary else None
         self.api = APIEncoder()
+        self.graph = CFGEncoder(node_dim=4)
         self.memory = MemoryEncoder()
         self.network = NetworkEncoder()
         self.sfs = SemanticFieldSynchronizer()
@@ -55,6 +56,12 @@ class XNERFPlusPlus(BaseModule):
         }
         if self.use_binary and "binary_image" in batch:
             embeddings["binary"] = self.binary(batch["binary_image"])
+
+        if ("graph_x" in batch and "graph_edge_index" in batch and batch["graph_x"].numel() > 0):
+            embeddings["graph"] = self.graph(
+                batch["graph_x"],
+                batch["graph_edge_index"],
+                batch["graph_batch"], )
         semantic = self.sfs(embeddings, time_steps=self.field_time)
         pooled = semantic.mean(dim=1)
         aligned = self.aligner(pooled)

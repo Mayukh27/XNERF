@@ -39,7 +39,7 @@ def evaluate_manifest(config_path: Path, manifest: Path, checkpoint: Path, out_d
     cfg = load_config(config_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model(checkpoint, cfg, device)
-    ds = MalwareManifestDataset(manifest)
+    ds = MalwareManifestDataset(manifest, require_cache=True)
     loader = DataLoader(
         ds,
         batch_size=int(cfg["training"].get("batch_size", 4)),
@@ -102,4 +102,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

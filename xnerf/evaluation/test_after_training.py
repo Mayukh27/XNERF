@@ -12,7 +12,7 @@ from tqdm import tqdm
 from xnerf.datasets.loaders import MalwareManifestDataset
 from xnerf.evaluation.evaluate import evaluate_predictions, save_confusion_matrix, save_tsne, save_umap
 from xnerf.model import XNERFPlusPlus
-from xnerf.utils.base import move_to_device
+from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.config import load_config
 
 
@@ -41,8 +41,8 @@ def run_test(config_path: str, checkpoint_path: str | None = None, out_dir: str 
         checkpoint = Path(checkpoint_path)
 
     model = load_model(checkpoint, cfg, device)
-    ds = MalwareManifestDataset(test_manifest)
-    loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2))
+    ds = MalwareManifestDataset(test_manifest, require_cache=True)
+    loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2), collate_fn=collate_dicts)
 
     probs, labels, embeddings, arch_probs, arch_labels = [], [], [], [], []
     for batch in tqdm(loader, desc="test"):
@@ -84,4 +84,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xnerf.datasets.build_dataset import build_manifest
+from xnerf.datasets.build_dataset import build_manifest, generate_cache_from_manifest
 from xnerf.datasets.loaders import MalwareManifestDataset
 from xnerf.utils.io import read_jsonl
 
@@ -30,6 +30,50 @@ def test_headerless_feature_csv_becomes_per_row_samples(tmp_path: Path):
     item = ds[0]
     assert item["memory_trace"].shape == (512, 8)
     assert item["binary_image"].sum().item() == 0
+
+
+def test_manifest_only_skips_feature_cache_then_generates_selected_cache(tmp_path: Path):
+    csv_dir = tmp_path / "raw" / "AndMal2020" / "static" / "benign"
+    csv_dir.mkdir(parents=True)
+    csv_path = csv_dir / "features.csv"
+    csv_path.write_text("sha111,1,2,3\nsha222,4,5,6\n", encoding="utf-8")
+    out = tmp_path / "processed" / "manifest.jsonl"
+
+    build_manifest(tmp_path, out, make_splits=False, manifest_only=True)
+
+    rows = read_jsonl(out)
+    assert len(rows) == 2
+    assert rows[0]["feature_path"] == ""
+    assert not (tmp_path / "cache").exists()
+
+    generate_cache_from_manifest(tmp_path, out)
+
+    rows = read_jsonl(out)
+    assert rows[0]["feature_path"]
+    assert Path(rows[0]["feature_path"]).exists()
+    item = MalwareManifestDataset(out, require_cache=True)[0]
+    assert item["memory_trace"].shape == (512, 8)
+
+
+def test_split_manifest_reuses_parent_generated_cache(tmp_path: Path):
+    csv_dir = tmp_path / "raw" / "AndMal2020" / "static" / "benign"
+    csv_dir.mkdir(parents=True)
+    csv_path = csv_dir / "features.csv"
+    csv_path.write_text("sha111,1,2,3\nsha222,4,5,6\n", encoding="utf-8")
+    parent = tmp_path / "processed" / "manifest_balanced.jsonl"
+    split = tmp_path / "processed" / "train_manifest.jsonl"
+
+    build_manifest(tmp_path, parent, make_splits=False, manifest_only=True)
+    split.write_text(parent.read_text(encoding="utf-8"), encoding="utf-8")
+
+    first = generate_cache_from_manifest(tmp_path, parent)
+    second = generate_cache_from_manifest(tmp_path, parent)
+
+    assert first["generated_feature_tensors"] == 2
+    assert second["skipped_existing"] == 2
+    assert read_jsonl(split)[0]["feature_path"] == ""
+    item = MalwareManifestDataset(split, require_cache=True)[0]
+    assert item["memory_trace"].shape == (512, 8)
 
 
 def test_headered_feature_csv_uses_label_and_numeric_columns(tmp_path: Path):

@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from xnerf.datasets.loaders import MalwareManifestDataset
 from xnerf.evaluation.test_after_training import load_model
-from xnerf.utils.base import move_to_device
+from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.config import load_config
 from xnerf.zero_shot.prototypes import save_prototype_bank
 
@@ -21,8 +21,8 @@ def build_family_prototypes(config_path: str, checkpoint_path: str, manifest_pat
     cfg = load_config(config_path)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = load_model(Path(checkpoint_path), cfg, device)
-    ds = MalwareManifestDataset(manifest_path)
-    loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2))
+    ds = MalwareManifestDataset(manifest_path, require_cache=True)
+    loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2), collate_fn=collate_dicts)
 
     vectors: dict[str, list[torch.Tensor]] = defaultdict(list)
     for batch in tqdm(loader, desc="build zero-shot prototypes"):
@@ -56,4 +56,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -141,6 +141,7 @@ def cmd_build_manifest(cfg: dict, p: dict[str, Path], args: argparse.Namespace) 
             train_ratio=float(cfg.get("splits", {}).get("train_ratio", 0.8)),
             val_ratio=float(cfg.get("splits", {}).get("val_ratio", 0.1)),
             seed=int(cfg.get("seed", 1337)),
+            manifest_only=getattr(args, "manifest_only", False),
         )
         result = {"rebuilt": True}
     else:
@@ -315,6 +316,11 @@ def main() -> None:
     p_bm = subs.add_parser("build-manifest", help="Build train/val/test manifests")
     _add_common(p_bm)
     p_bm.add_argument("--rebuild-manifests", action="store_true")
+    p_bm.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Build manifests and metadata without generating tensor cache files",
+    )
 
     p_tr = subs.add_parser("train", help="Train the model")
     _add_common(p_tr)

@@ -12,7 +12,7 @@ from tqdm import tqdm
 from xnerf.datasets.validation import validate_family_batch
 from xnerf.training.losses import classification_losses, total_loss
 from xnerf.utils.base import Trainer, move_to_device
-
+from xnerf.utils.base import collate_dicts
 
 class XNerfTrainer(Trainer):
     """Production training loop.
@@ -51,8 +51,8 @@ class XNerfTrainer(Trainer):
         self.model = model.to(self.device)
         if torch.cuda.device_count() > 1:
             self.model = torch.nn.DataParallel(self.model)
-        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
-        self.val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers) if val_dataset else None
+        self.train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, collate_fn=collate_dicts)
+        self.val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, collate_fn=collate_dicts) if val_dataset else None
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=1e-4)
         self.use_amp = bool(use_amp) and self.device.type == "cuda"
         self.scaler = torch.cuda.amp.GradScaler(enabled=self.use_amp)
