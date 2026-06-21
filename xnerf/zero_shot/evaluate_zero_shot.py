@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from xnerf.datasets.loaders import MalwareManifestDataset
 from xnerf.evaluation.test_after_training import load_model
-from xnerf.utils.base import move_to_device
+from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.config import load_config
 from xnerf.zero_shot.prototypes import ZeroShotPrototypeClassifier, load_prototype_bank
 
@@ -26,8 +26,8 @@ def evaluate_zero_shot(config_path: str, checkpoint_path: str, manifest_path: st
     classifier = ZeroShotPrototypeClassifier(bank["prototypes"], bank["labels"]).to(device)
     label_to_id = {label: idx for idx, label in enumerate(bank["labels"])}
 
-    ds = MalwareManifestDataset(manifest_path)
-    loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2))
+    ds = MalwareManifestDataset(manifest_path, require_cache=True)
+    loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2), collate_fn=collate_dicts)
 
     y_true, y_pred, probs = [], [], []
     for batch in tqdm(loader, desc="zero-shot eval"):
@@ -77,4 +77,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,16 +1,33 @@
 from __future__ import annotations
 
+import hashlib
+from importlib.resources import path
 import json
+import re
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import torch
 
+import networkx as nx
+
 from xnerf.datasets.family_cleaning import build_family_vocabulary, load_family_normalization_rules, normalize_family_name
 from xnerf.preprocessing.ontology import ARCH_TO_ID
 from xnerf.utils.base import DatasetLoader
-from xnerf.utils.io import read_jsonl
+from xnerf.utils.io import read_jsonl, sha256_file
+
+
+def _cache_root_for_source(path: Path) -> Path | None:
+    for parent in path.parents:
+        if parent.name == "raw":
+            return parent.parent / "cache" / "isr"
+    return None
+
+
+def _safe_cache_name(value: str, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9_.-]+", "_", value).strip("._")
+    return (cleaned or fallback)[:80]
 
 
 def load_family_vocab(
@@ -74,6 +91,7 @@ class MalwareManifestDataset(DatasetLoader):
         seq_len: int = 256,
         memory_len: int = 512,
         isr_len: int = 1024,
+        require_cache: bool = False,
     ):
         self.manifest_path = Path(manifest_path)
         self.rows = read_jsonl(self.manifest_path)
@@ -90,6 +108,8 @@ class MalwareManifestDataset(DatasetLoader):
         self.seq_len = seq_len
         self.memory_len = memory_len
         self.isr_len = isr_len
+        self.require_cache = require_cache
+        self._source_hash_cache: dict[str, str] = {}
 
     def __len__(self) -> int:
         return len(self.rows)
@@ -100,10 +120,93 @@ class MalwareManifestDataset(DatasetLoader):
             data = np.zeros(1, dtype=np.uint8)
         data = np.pad(data, (0, max(0, self.image_size * self.image_size - data.size)))[: self.image_size * self.image_size]
         return torch.from_numpy(data.reshape(1, self.image_size, self.image_size).astype("float32") / 255.0)
+   
+    def _load_graph(self, path):
+     try:
+        g = nx.read_edgelist(path, nodetype=str)
+
+        nodes = list(g.nodes())
+        node_to_idx = {n: i for i, n in enumerate(nodes)}
+
+        edges = []
+        for u, v in g.edges():
+            edges.append([node_to_idx[u], node_to_idx[v]])
+            edges.append([node_to_idx[v], node_to_idx[u]])
+
+        if not edges:
+            return (torch.zeros((0, 4), dtype=torch.float32), torch.zeros((2, 0), dtype=torch.long),)
+        
+        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
+
+        deg = dict(g.degree())
+
+        x = []
+        max_deg = max(deg.values()) if deg else 1
+
+        for n in nodes:
+            d = float(deg[n])
+            x.append([d,d,d, d / max(max_deg, 1),])
+
+        x = torch.tensor(x, dtype=torch.float32)
+
+        return x, edge_index
+
+     except Exception:
+        return (
+            torch.zeros((0, 4), dtype=torch.float32),
+            torch.zeros((2, 0), dtype=torch.long),
+        )
+    
+    
+    def _source_file_key(self, path: Path) -> str:
+        key = str(path)
+        if key not in self._source_hash_cache:
+            self._source_hash_cache[key] = sha256_file(path)[:12]
+        return self._source_hash_cache[key]
+
+    def _derived_feature_path(self, row: dict[str, Any]) -> Path | None:
+        path = Path(row["path"])
+        cache_root = _cache_root_for_source(path)
+        if cache_root is None:
+            return None
+        row_index = int(row.get("row_index", 0))
+        sample_id = str(row.get("sample_id") or f"{path.stem}_{row_index}")
+        file_key = self._source_file_key(path)
+        source = _safe_cache_name(path.stem, "features")[:32]
+        sample_key = hashlib.sha256(sample_id.encode("utf-8", errors="ignore")).hexdigest()[:12]
+        shard = f"{file_key}_{row_index // 10_000:05d}"
+        return cache_root / "features" / file_key[:2] / shard / f"{source}_{row_index}_{sample_key}.pt"
+
+    def _derived_isr_path(self, row: dict[str, Any]) -> Path | None:
+        path = Path(row["path"])
+        cache_root = _cache_root_for_source(path)
+        if cache_root is None:
+            return None
+        sha = row.get("sha256")
+        if not sha:
+            sha = sha256_file(path)
+        return cache_root / f"{sha}.pt"
 
     def _memory_trace(self, row: dict[str, Any]) -> torch.Tensor:
         out = torch.zeros(self.memory_len, 8, dtype=torch.float32)
         feature_path = row.get("feature_path")
+        if not feature_path and row.get("data_type") in {"feature_csv", "feature_parquet"}:
+            derived = self._derived_feature_path(row)
+            if derived and derived.exists():
+                feature_path = str(derived)
+        if row.get("data_type") in {"feature_csv", "feature_parquet"} and self.require_cache:
+            if not feature_path:
+                raise FileNotFoundError(
+                    f"Manifest row requires a feature tensor cache but feature_path is empty: "
+                    f"manifest={self.manifest_path} path={row.get('path')} row_index={row.get('row_index')}. "
+                    "Run `python -m xnerf.datasets.build_dataset --root data "
+                    f"--generate-cache-from-manifest {self.manifest_path}` first."
+                )
+            if not Path(feature_path).exists():
+                raise FileNotFoundError(
+                    f"Feature tensor cache is missing: {feature_path} "
+                    f"(manifest={self.manifest_path}, path={row.get('path')}, row_index={row.get('row_index')})."
+                )
         if feature_path and Path(feature_path).exists():
             loaded = torch.load(feature_path, map_location="cpu").float()
             loaded = torch.nan_to_num(loaded, nan=0.0, posinf=0.0, neginf=0.0)
@@ -123,12 +226,40 @@ class MalwareManifestDataset(DatasetLoader):
     def __getitem__(self, index: int) -> dict[str, Any]:
         row = self.rows[index]
         path = Path(row["path"])
+        
+        graph_x = torch.zeros((0, 4), dtype=torch.float32)
+        graph_edge_index = torch.zeros((2, 0), dtype=torch.long)
+
+        if str(path).lower().endswith(".edgelist"):
+            graph_x, graph_edge_index = self._load_graph(path)
+
+
         family = normalize_family_name(row.get("family", "unknown"), label=row.get("label", 0), rules=self.family_rules)
         if family not in self.family_to_id:
             raise KeyError(f"family '{family}' missing from vocabulary for {self.manifest_path}")
         isr = torch.zeros(self.isr_len, 4, dtype=torch.long)
-        if row.get("isr_path") and Path(row["isr_path"]).exists():
-            loaded = torch.load(row["isr_path"], map_location="cpu")
+        isr_path = row.get("isr_path")
+        if self.require_cache:
+            suffix = path.suffix.lower()
+            likely_binary = row.get("data_type") not in {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"} and suffix in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+            if likely_binary and not isr_path:
+                derived = self._derived_isr_path(row)
+                if derived and derived.exists():
+                    isr_path = str(derived)
+            if likely_binary and not isr_path:
+                raise FileNotFoundError(
+                    f"Manifest row requires an ISR tensor cache but isr_path is empty: "
+                    f"manifest={self.manifest_path} path={row.get('path')}. "
+                    "Run `python -m xnerf.datasets.build_dataset --root data "
+                    f"--generate-cache-from-manifest {self.manifest_path}` first."
+                )
+            if isr_path and not Path(isr_path).exists():
+                raise FileNotFoundError(
+                    f"ISR tensor cache is missing: {isr_path} "
+                    f"(manifest={self.manifest_path}, path={row.get('path')})."
+                )
+        if isr_path and Path(isr_path).exists():
+            loaded = torch.load(isr_path, map_location="cpu")
             if loaded.is_floating_point():
                 loaded = torch.nan_to_num(loaded, nan=0.0, posinf=0.0, neginf=0.0)
             isr[: min(self.isr_len, loaded.shape[0])] = loaded[: self.isr_len]
@@ -137,6 +268,8 @@ class MalwareManifestDataset(DatasetLoader):
             "binary_image": torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32)
             if data_type in {"feature_csv", "feature_parquet"}
             else self._binary_image(path),
+            "graph_x": graph_x,
+            "graph_edge_index": graph_edge_index,
             "api_ids": self._load_ids(row, "api_ids"),
             "network_ids": self._load_ids(row, "network_ids"),
             "memory_trace": self._memory_trace(row),

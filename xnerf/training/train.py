@@ -26,7 +26,7 @@ from xnerf.evaluation.evaluate import evaluate_predictions
 from xnerf.evaluation.test_after_training import load_model
 from xnerf.model import XNERFPlusPlus
 from xnerf.training.trainer import XNerfTrainer
-from xnerf.utils.base import move_to_device
+from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.config import load_config
 from xnerf.utils.seed import seed_everything
 
@@ -48,9 +48,9 @@ def run_training(config_path: str = "config.yaml", resume_from: str | None = Non
     cfg = load_config(config_path)
     seed_everything(cfg.get("seed", 1337))
 
-    train_ds = MalwareManifestDataset(cfg["data"]["train_manifest"])
+    train_ds = MalwareManifestDataset(cfg["data"]["train_manifest"], require_cache=True)
     val_path = cfg["data"].get("val_manifest")
-    val_ds = MalwareManifestDataset(val_path) if val_path else None
+    val_ds = MalwareManifestDataset(val_path, require_cache=True) if val_path else None
 
     model = XNERFPlusPlus(
         num_classes=cfg["model"]["num_classes"],
@@ -94,12 +94,13 @@ def run_validation(config_path: str = "config.yaml", checkpoint_path: str | None
     )
     model = load_model(ckpt_path, cfg, device)
 
-    ds = MalwareManifestDataset(val_manifest)
+    ds = MalwareManifestDataset(val_manifest, require_cache=True)
     loader = DataLoader(
         ds,
         batch_size=cfg["training"].get("batch_size", 4),
         shuffle=False,
         num_workers=cfg["training"].get("num_workers", 2),
+         collate_fn=collate_dicts,
     )
 
     probs, labels = [], []

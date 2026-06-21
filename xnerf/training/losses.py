@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 
 
-def classification_losses(outputs: dict[str, torch.Tensor], batch: dict[str, torch.Tensor], family_weight: float = 0.5, arch_weight: float = 0.1) -> dict[str, torch.Tensor]:
+def classification_losses(outputs: dict[str, torch.Tensor], batch: dict[str, torch.Tensor], family_weight: float = 0.1, arch_weight: float = 0.1) -> dict[str, torch.Tensor]:
     losses = {"malware_ce": F.cross_entropy(outputs["malware_logits"], batch["label"])}
     if "family_label" in batch:
         losses["family_ce"] = F.cross_entropy(outputs["family_logits"], batch["family_label"]) * family_weight

@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import os
 import random
 import re
 from pathlib import Path
@@ -14,7 +15,7 @@ from xnerf.datasets.family_cleaning import build_family_vocabulary, load_family_
 from xnerf.datasets.family_cleaning import normalize_family_name
 from xnerf.preprocessing.pipeline import ArchitectureNormalizationPipeline
 from xnerf.sandbox.cape_parser import parse_cape_report
-from xnerf.utils.io import sha256_file, write_jsonl
+from xnerf.utils.io import read_jsonl, sha256_file, write_jsonl
 from xnerf.utils.tokenization import tokens_to_ids
 
 # ------------------------------------------------------------------
@@ -443,6 +444,7 @@ def process_feature_csv(
     label_maps: dict[str, dict] | None = None,
     max_rows_per_csv: int | None = None,
     row_sink: Callable[[dict], None] | None = None,
+    manifest_only: bool = False,
 ) -> tuple[list[dict], int]:
     """Convert headerless or headered numeric feature-vector CSV rows.
 
@@ -460,7 +462,8 @@ def process_feature_csv(
     rows: list[dict] = []
     count = 0
     feature_cache = cache / "features"
-    feature_cache.mkdir(parents=True, exist_ok=True)
+    if not manifest_only:
+        feature_cache.mkdir(parents=True, exist_ok=True)
     dataset = path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown"
     default_label = infer_label(path)
     default_family = feature_family_from_path(path)
@@ -510,10 +513,12 @@ def process_feature_csv(
             features = row_features(row, numeric_indexes)
             if not features:
                 continue
-            import torch
+            feature_path = None
+            if not manifest_only:
+                import torch
 
-            feature_path = feature_tensor_path(feature_cache, file_key, path.stem, idx, sample_id)
-            torch.save(build_memory_trace(features), feature_path)
+                feature_path = feature_tensor_path(feature_cache, file_key, path.stem, idx, sample_id)
+                torch.save(build_memory_trace(features), feature_path)
             mapped = label_maps.get(sample_id, {})
             label = mapped.get("label", default_label)
             if label_idx is not None and label_idx < len(row):
@@ -528,7 +533,7 @@ def process_feature_csv(
                 "sha256": sample_id if len(sample_id) >= 16 else f"{sha256_file(path)}:{idx}",
                 "dataset": dataset,
                 "data_type": "feature_csv",
-                "feature_path": str(feature_path),
+                "feature_path": str(feature_path) if feature_path else "",
                 "feature_dim": len(features),
                 "label": label,
                 "family": family,
@@ -567,6 +572,7 @@ def process_feature_parquet(
     label_maps: dict[str, dict] | None = None,
     max_rows_per_parquet: int | None = None,
     row_sink: Callable[[dict], None] | None = None,
+    manifest_only: bool = False,
 ) -> tuple[list[dict], int]:
     """Convert parquet feature tables into manifest rows.
 
@@ -577,7 +583,8 @@ def process_feature_parquet(
     rows: list[dict] = []
     count = 0
     feature_cache = cache / "features"
-    feature_cache.mkdir(parents=True, exist_ok=True)
+    if not manifest_only:
+        feature_cache.mkdir(parents=True, exist_ok=True)
     dataset = path.relative_to(raw).parts[0] if len(path.relative_to(raw).parts) else "unknown"
     default_label = infer_label(path)
     default_family = feature_family_from_path(path)
@@ -653,10 +660,12 @@ def process_feature_parquet(
                 row_index += 1
                 continue
 
-            import torch
+            feature_path = None
+            if not manifest_only:
+                import torch
 
-            feature_path = feature_tensor_path(feature_cache, file_key, path.stem, row_index, sample_id)
-            torch.save(build_memory_trace(list(features)), feature_path)
+                feature_path = feature_tensor_path(feature_cache, file_key, path.stem, row_index, sample_id)
+                torch.save(build_memory_trace(list(features)), feature_path)
             
             arch = infer_arch(path)
 
@@ -671,7 +680,7 @@ def process_feature_parquet(
                 "sha256": sample_id if len(sample_id) >= 16 else f"{sha256_file(path)}:{row_index}",
                 "dataset": dataset,
                 "data_type": "feature_parquet",
-                "feature_path": str(feature_path),
+                "feature_path": str(feature_path) if feature_path else "",
                 "feature_dim": len(features),
                 "label": label,
                 "family": family,
@@ -817,13 +826,17 @@ def build_manifest(
     train_ratio: float = 0.8,
     val_ratio: float = 0.1,
     seed: int = 1337,
+    manifest_only: bool = False,
 ) -> None:
     raw = root / "raw"
     cache = root / "cache" / "isr"
-    cache.mkdir(parents=True, exist_ok=True)
+    if not manifest_only:
+        cache.mkdir(parents=True, exist_ok=True)
     split_mode = split_mode.lower().strip()
     if split_mode not in {"stratified", "hash"}:
         raise ValueError(f"Unknown split mode: {split_mode}")
+    if manifest_only and resume:
+        raise ValueError("--resume cannot be used with --manifest-only because resume markers are cache files.")
     rows: list[dict] = []
     if not raw.exists():
         raise FileNotFoundError(f"raw dataset folder not found: {raw}")
@@ -850,7 +863,8 @@ def build_manifest(
         counts = {"full": 0, "train": 0, "val": 0, "test": 0}
         family_names: set[str] = set()
         progress_dir = root / "cache" / "manifest_progress"
-        progress_dir.mkdir(parents=True, exist_ok=True)
+        if not manifest_only:
+            progress_dir.mkdir(parents=True, exist_ok=True)
         mode = "a" if resume else "w"
         with open(out, mode, encoding="utf-8") as manifest_f, open(
             train_path, mode, encoding="utf-8"
@@ -895,7 +909,8 @@ def build_manifest(
                             row_sink=emit_row,
                         )
                         print(f"Parsed {count} API sequence rows from {path}")
-                        marker.write_text(str(path), encoding="utf-8")
+                        if not manifest_only:
+                            marker.write_text(str(path), encoding="utf-8")
                         continue
                     _, count = process_feature_csv(
                         path,
@@ -904,9 +919,11 @@ def build_manifest(
                         label_maps=label_maps,
                         max_rows_per_csv=max_rows_per_csv,
                         row_sink=emit_row,
+                        manifest_only=manifest_only,
                     )
                     print(f"Parsed {count} feature rows from {path}")
-                    marker.write_text(str(path), encoding="utf-8")
+                    if not manifest_only:
+                        marker.write_text(str(path), encoding="utf-8")
                     continue
                 if path.suffix.lower() == ".txt" and path.name.lower() == "all_analysis_data.txt":
                     _, count = process_api_sequence_txt(
@@ -916,7 +933,8 @@ def build_manifest(
                         row_sink=emit_row,
                     )
                     print(f"Parsed {count} API sequence rows from {path}")
-                    marker.write_text(str(path), encoding="utf-8")
+                    if not manifest_only:
+                        marker.write_text(str(path), encoding="utf-8")
                     continue
                 if path.suffix.lower() == ".parquet":
                     _, count = process_feature_parquet(
@@ -926,9 +944,11 @@ def build_manifest(
                         label_maps=label_maps,
                         max_rows_per_parquet=max_rows_per_parquet,
                         row_sink=emit_row,
+                        manifest_only=manifest_only,
                     )
                     print(f"Parsed {count} feature rows from {path}")
-                    marker.write_text(str(path), encoding="utf-8")
+                    if not manifest_only:
+                        marker.write_text(str(path), encoding="utf-8")
                     continue
                 record = {
                     "path": str(path),
@@ -939,7 +959,10 @@ def build_manifest(
                     "arch": infer_arch(path),
                 }
                 record = enrich_dynamic_report(record, path)
-                if path.stat().st_size <= max_binary_bytes and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}:
+                is_binary_candidate = path.stat().st_size <= max_binary_bytes and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+                if manifest_only and is_binary_candidate:
+                    record["isr_path"] = ""
+                if not manifest_only and is_binary_candidate:
                     arch = record["arch"]
                     normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
                     blob = path.read_bytes()
@@ -950,7 +973,8 @@ def build_manifest(
                     torch.save(isr, isr_path)
                     record["isr_path"] = str(isr_path)
                 emit_row(record)
-                marker.write_text(str(path), encoding="utf-8")
+                if not manifest_only:
+                    marker.write_text(str(path), encoding="utf-8")
 
         if counts["full"] == 0:
             if resume:
@@ -986,6 +1010,7 @@ def build_manifest(
                 cache=cache,
                 label_maps=label_maps,
                 max_rows_per_csv=max_rows_per_csv,
+                manifest_only=manifest_only,
             )
             rows.extend(csv_rows)
             print(f"Parsed {count} feature rows from {path}")
@@ -1006,6 +1031,7 @@ def build_manifest(
                 cache=cache,
                 label_maps=label_maps,
                 max_rows_per_parquet=max_rows_per_parquet,
+                manifest_only=manifest_only,
             )
             rows.extend(parquet_rows)
             print(f"Parsed {count} feature rows from {path}")
@@ -1019,7 +1045,10 @@ def build_manifest(
             "arch": infer_arch(path),
         }
         record = enrich_dynamic_report(record, path)
-        if path.stat().st_size <= max_binary_bytes and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}:
+        is_binary_candidate = path.stat().st_size <= max_binary_bytes and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+        if manifest_only and is_binary_candidate:
+            record["isr_path"] = ""
+        if not manifest_only and is_binary_candidate:
             arch = record["arch"]
             normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
             blob = path.read_bytes()
@@ -1040,6 +1069,221 @@ def build_manifest(
         print(f"Wrote split manifests to {out.parent}: {counts}")
 
 
+def _feature_csv_values_for_row(path: Path, row_index: int) -> list[float]:
+    with open(path, "r", encoding="utf-8", errors="ignore", newline="") as f:
+        reader = csv.reader(f)
+        first = next(reader, [])
+        if not first:
+            return []
+        has_header = _looks_like_header(first)
+        id_idx = 0
+        label_idx = None
+        family_idx = None
+        numeric_indexes = list(range(1, len(first)))
+        if has_header:
+            headers = first
+            id_idx = column_index(headers, ID_COLUMNS)
+            label_idx = column_index(headers, LABEL_COLUMNS)
+            family_idx = column_index(headers, FAMILY_COLUMNS)
+            normalized = [norm_col(h) for h in headers]
+            skip_cols = {idx for idx in (id_idx, label_idx, family_idx) if idx is not None}
+            numeric_indexes = [
+                i
+                for i, name in enumerate(normalized)
+                if i not in skip_cols and name not in LABEL_COLUMNS and name not in FAMILY_COLUMNS
+            ]
+
+        def _row_iter():
+            if not has_header:
+                yield first
+            for row in reader:
+                yield row
+
+        for idx, row in enumerate(_row_iter()):
+            if idx == row_index:
+                return row_features(row, numeric_indexes)
+    return []
+
+
+def _feature_parquet_values_for_row(path: Path, row_index: int) -> list[float]:
+    try:
+        import pyarrow.parquet as pq
+    except ImportError as exc:  # pragma: no cover - optional dependency
+        raise RuntimeError("Reading parquet requires pyarrow. Install pyarrow to parse parquet datasets.") from exc
+
+    parquet = pq.ParquetFile(path)
+    columns = parquet.schema.names
+    feature_col = _feature_column_name(columns)
+    if feature_col is None:
+        id_col = column_index(columns, ID_COLUMNS)
+        label_col = column_index(columns, LABEL_COLUMNS)
+        family_col = column_index(columns, FAMILY_COLUMNS)
+        normalized = [norm_col(h) for h in columns]
+        skip_cols = {idx for idx in (id_col, label_col, family_col) if idx is not None}
+        numeric_indexes = [
+            i
+            for i, name in enumerate(normalized)
+            if i not in skip_cols and name not in LABEL_COLUMNS and name not in FAMILY_COLUMNS
+        ]
+    else:
+        numeric_indexes = []
+
+    current = 0
+    for batch in parquet.iter_batches(batch_size=2048, columns=columns):
+        if current + batch.num_rows <= row_index:
+            current += batch.num_rows
+            continue
+        local_index = row_index - current
+        data = batch.to_pydict()
+        if feature_col:
+            return list(data[feature_col][local_index] or [])
+        return [
+            _safe_float(data[columns[idx]][local_index])
+            for idx in numeric_indexes
+            if _safe_float(data[columns[idx]][local_index]) is not None
+        ]
+    return []
+
+
+def _is_binary_cache_candidate(path: Path, max_binary_bytes: int) -> bool:
+    return (
+        path.exists()
+        and path.is_file()
+        and path.stat().st_size <= max_binary_bytes
+        and path.suffix.lower() in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+    )
+
+
+def _save_tensor_without_overwrite(torch_module, tensor, path: Path) -> bool:
+    if path.exists():
+        return False
+    tmp = path.with_name(f"{path.name}.tmp")
+    torch_module.save(tensor, tmp)
+    tmp.replace(path)
+    return True
+
+
+def generate_cache_from_manifest(
+    root: Path,
+    manifest_path: Path,
+    max_binary_bytes: int = 2_000_000,
+) -> dict[str, int]:
+    """Generate tensor caches for only the samples listed in an existing manifest.
+
+    The manifest is rewritten in place with populated feature_path/isr_path fields.
+    Split manifests can reuse these cache files because cache paths are
+    deterministic from the source path, row_index, sample_id, and sha256.
+    """
+
+    rows = read_jsonl(manifest_path)
+    if not rows:
+        raise RuntimeError(f"Manifest is empty: {manifest_path}")
+
+    cache = root / "cache" / "isr"
+    feature_cache = cache / "features"
+    cache.mkdir(parents=True, exist_ok=True)
+    feature_cache.mkdir(parents=True, exist_ok=True)
+
+    import torch
+
+    normalizers: dict[str, ArchitectureNormalizationPipeline] = {}
+    counts = {
+        "rows": len(rows),
+        "generated_feature_tensors": 0,
+        "generated_isr_tensors": 0,
+        "skipped_existing": 0,
+        "skipped_invalid": 0,
+        "failed": 0,
+    }
+    for row in rows:
+        path = Path(row.get("path", ""))
+        data_type = row.get("data_type")
+        if data_type == "feature_csv":
+            sample_id = str(row.get("sample_id") or f"{path.stem}_{row.get('row_index', 0)}")
+            try:
+                features = _feature_csv_values_for_row(path, int(row.get("row_index", 0)))
+                if not features:
+                    counts["skipped_invalid"] += 1
+                    continue
+                file_key = sha256_file(path)[:12]
+                feature_path = feature_tensor_path(feature_cache, file_key, path.stem, int(row.get("row_index", 0)), sample_id)
+                if feature_path.exists():
+                    row["feature_path"] = str(feature_path)
+                    row["feature_dim"] = len(features)
+                    counts["skipped_existing"] += 1
+                else:
+                    generated = _save_tensor_without_overwrite(torch, build_memory_trace(features), feature_path)
+                    row["feature_path"] = str(feature_path)
+                    row["feature_dim"] = len(features)
+                    if generated:
+                        counts["generated_feature_tensors"] += 1
+                    else:
+                        counts["skipped_existing"] += 1
+            except Exception as exc:
+                counts["failed"] += 1
+                print(f"Failed: {sample_id}: {exc}")
+            continue
+        if data_type == "feature_parquet":
+            sample_id = str(row.get("sample_id") or f"{path.stem}_{row.get('row_index', 0)}")
+            try:
+                features = _feature_parquet_values_for_row(path, int(row.get("row_index", 0)))
+                if not features:
+                    counts["skipped_invalid"] += 1
+                    continue
+                file_key = sha256_file(path)[:12]
+                feature_path = feature_tensor_path(feature_cache, file_key, path.stem, int(row.get("row_index", 0)), sample_id)
+                if feature_path.exists():
+                    row["feature_path"] = str(feature_path)
+                    row["feature_dim"] = len(features)
+                    counts["skipped_existing"] += 1
+                else:
+                    generated = _save_tensor_without_overwrite(torch, build_memory_trace(list(features)), feature_path)
+                    row["feature_path"] = str(feature_path)
+                    row["feature_dim"] = len(features)
+                    if generated:
+                        counts["generated_feature_tensors"] += 1
+                    else:
+                        counts["skipped_existing"] += 1
+            except Exception as exc:
+                counts["failed"] += 1
+                print(f"Failed: {sample_id}: {exc}")
+            continue
+        if _is_binary_cache_candidate(path, max_binary_bytes):
+            sample_id = str(row.get("sample_id") or row.get("sha256") or path.name)
+            try:
+                sha = row.get("sha256") or sha256_file(path)
+                isr_path = cache / f"{sha}.pt"
+                if isr_path.exists():
+                    row["isr_path"] = str(isr_path)
+                    counts["skipped_existing"] += 1
+                else:
+                    arch = row.get("arch", infer_arch(path))
+                    normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
+                    isr = normalizers[arch].process({"bytes": path.read_bytes(), "arch": arch})
+                    generated = _save_tensor_without_overwrite(torch, isr, isr_path)
+                    row["isr_path"] = str(isr_path)
+                    if generated:
+                        counts["generated_isr_tensors"] += 1
+                    else:
+                        counts["skipped_existing"] += 1
+            except Exception as exc:
+                counts["failed"] += 1
+                print(f"Failed: {sample_id}: {exc}")
+            continue
+        counts["skipped_invalid"] += 1
+
+    tmp = manifest_path.with_name(f"{manifest_path.name}.tmp")
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as f:
+        for row in rows:
+            f.write(json.dumps(row, sort_keys=True) + "\n")
+        f.flush()
+        os.fsync(f.fileno())
+    tmp.replace(manifest_path)
+    print(json.dumps(counts, indent=2, sort_keys=True))
+    return counts
+
+
 def validate_manifest(path: Path) -> None:
     count = 0
     missing = []
@@ -1057,24 +1301,41 @@ def validate_manifest(path: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build X-NERF++ unified manifest")
-    parser.add_argument("--root", type=Path, default=Path("data"))
-    parser.add_argument("--out", type=Path, default=Path("data/processed/manifest.jsonl"))
+    parser = argparse.ArgumentParser(
+        description="Build X-NERF++ unified manifest and optional tensor caches",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--root", type=Path, default=Path("data"), help="Dataset root containing raw/ and cache/")
+    parser.add_argument("--out", type=Path, default=Path("data/processed/manifest.jsonl"), help="Output manifest JSONL path")
     parser.add_argument("--only-dataset", type=str, default=None, help="Only scan data/raw/<dataset_name>")
-    parser.add_argument("--max-rows-per-csv", type=int, default=None)
-    parser.add_argument("--max-rows-per-parquet", type=int, default=None)
-    parser.add_argument("--split-mode", choices=["stratified", "hash"], default="stratified")
+    parser.add_argument("--max-rows-per-csv", type=int, default=None, help="Limit rows parsed per CSV file")
+    parser.add_argument("--max-rows-per-parquet", type=int, default=None, help="Limit rows parsed per parquet file")
+    parser.add_argument("--split-mode", choices=["stratified", "hash"], default="stratified", help="Split strategy")
     parser.add_argument("--resume", action="store_true", help="Resume hash-mode manifest build using progress markers")
-    parser.add_argument("--validate", action="store_true")
-    parser.add_argument("--no-split", action="store_true")
-    parser.add_argument("--train-ratio", type=float, default=0.8)
-    parser.add_argument("--val-ratio", type=float, default=0.1)
-    parser.add_argument("--seed", type=int, default=1337)
+    parser.add_argument("--validate", action="store_true", help="Validate that manifest source paths exist")
+    parser.add_argument("--no-split", action="store_true", help="Write only --out, not train/val/test manifests")
+    parser.add_argument("--train-ratio", type=float, default=0.8, help="Training split ratio")
+    parser.add_argument("--val-ratio", type=float, default=0.1, help="Validation split ratio")
+    parser.add_argument("--seed", type=int, default=1337, help="Deterministic split seed")
+    parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help="Build manifest and split metadata only; do not create ISR, feature, tensor, or progress cache files",
+    )
+    parser.add_argument(
+        "--generate-cache-from-manifest",
+        type=Path,
+        default=None,
+        metavar="MANIFEST_PATH",
+        help="Read an existing manifest, generate tensor caches only for its rows, and update cache paths in place",
+    )
     args = parser.parse_args()
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    if args.validate:
+    if args.generate_cache_from_manifest:
+        generate_cache_from_manifest(args.root, args.generate_cache_from_manifest)
+    elif args.validate:
         validate_manifest(args.out)
     else:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
         build_manifest(
             args.root,
             args.out,
@@ -1087,6 +1348,7 @@ def main() -> None:
             train_ratio=args.train_ratio,
             val_ratio=args.val_ratio,
             seed=args.seed,
+            manifest_only=args.manifest_only,
         )
 
 
