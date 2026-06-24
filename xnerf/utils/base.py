@@ -142,7 +142,7 @@ def collate_dicts(items):
             )
 
             node_offset += gx.shape[0]
-
+        
         out["graph_x"] = torch.cat(graph_x, dim=0)
         out["graph_edge_index"] = torch.cat(
             graph_edge_index,
@@ -152,6 +152,12 @@ def collate_dicts(items):
             graph_batch,
             dim=0,
         )
+    else:
+            out["graph_x"] = torch.zeros((0, 4),dtype=torch.float32,)
+
+            out["graph_edge_index"] = torch.zeros((2, 0),dtype=torch.long,)
+
+            out["graph_batch"] = torch.zeros((0,),dtype=torch.long,)
 
     # ----- Everything else -----
     for key in items[0].keys():
