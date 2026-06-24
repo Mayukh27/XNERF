@@ -7,7 +7,7 @@ from typing import Any, Iterable, Mapping
 from xnerf.preprocessing.ontology import ARCH_TO_ID
 
 
-KNOWN_ARCHES = frozenset(ARCH_TO_ID)
+KNOWN_ARCHES = frozenset(k for k in ARCH_TO_ID if k != "unknown")
 ARCH_HINTS = {
     "x86": ("x86", "i386", "i686", "win32", "32bit"),
     "x64": ("x64", "amd64", "x86_64", "64bit", "x86-64"),

@@ -25,7 +25,7 @@ class ISREncoder(BaseModule):
     def __init__(self, hidden_dim: int = 256, out_dim: int = 512):
         super().__init__()
         self.semantic = nn.Embedding(len(SEMANTIC_TO_ID), hidden_dim, padding_idx=0)
-        self.arch = nn.Embedding(6, hidden_dim, padding_idx=0)
+        self.arch = nn.Embedding(7, hidden_dim, padding_idx=0)
         self.delta = nn.Embedding(256, hidden_dim, padding_idx=0)
         self.size = nn.Embedding(32, hidden_dim, padding_idx=0)
         layer = nn.TransformerEncoderLayer(

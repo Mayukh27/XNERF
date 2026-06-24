@@ -22,6 +22,22 @@ Date: 2026-06-24
 
 The trainer still calls `classification_losses` from `xnerf/training/losses.py`. Family CE now ignores invalid labels. Runtime training smoke tests were not completed in this environment because `pytest` and `torch` are unavailable in the usable Python runtime.
 
+## 3b. Architecture Label Audit
+
+| Source | Before | After |
+|---|---|---|
+| Filename-inferred binary samples | `x86` fallback | `unknown` fallback |
+| Feature CSV / Parquet samples | `x86` fallback when architecture missing | `unknown` fallback when architecture missing |
+| CAPE / Avast JSON reports | not architecture-bearing | not architecture-bearing |
+| API sequence CSV / TXT | not architecture-bearing | not architecture-bearing |
+| `.edgelist` graphs | graph data only, architecture metadata inherited from row | graph data only, unknown labels masked from arch loss |
+
+Architecture classes:
+
+- Before: `x86`, `x64`, `arm`, `arm64`, `mips`, `riscv`
+- After: `unknown`, `x86`, `x64`, `arm`, `arm64`, `mips`, `riscv`
+- Training impact: unknown rows still contribute to malware and family loss, but are excluded from architecture loss and cross-architecture evaluation.
+
 ## 4. Loss Function Audit
 
 Live loss:
@@ -86,4 +102,3 @@ Blocked:
 
 - `pytest`: command not available in `.venv`; bundled Python lacks `pytest`.
 - Synthetic forward/backward: bundled Python lacks `torch`.
-

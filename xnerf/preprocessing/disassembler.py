@@ -46,7 +46,7 @@ class DisassemblerProcessor(Processor):
         ins = p.process(b"\\x89\\xd8")
     """
 
-    def __init__(self, arch: str = "x86", max_instructions: int = 4096):
+    def __init__(self, arch: str = "unknown", max_instructions: int = 4096):
         self.arch = arch.lower()
         self.max_instructions = max_instructions
 
@@ -82,4 +82,3 @@ class DisassemblerProcessor(Processor):
                 break
             records.append(Instruction(ins.address, ins.mnemonic.lower(), ins.op_str.lower(), ins.size))
         return records
-

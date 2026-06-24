@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from xnerf.preprocessing.ontology import ARCH_TO_ID
 from xnerf.preprocessing.disassembler import DisassemblerProcessor
 from xnerf.preprocessing.isr_builder import ISRBuilderProcessor
 from xnerf.preprocessing.semantic_mapper import SemanticMapperProcessor
@@ -21,7 +22,7 @@ class ArchitectureNormalizationPipeline(Processor):
 
     def __init__(
         self,
-        arch: str = "x86",
+        arch: str = "unknown",
         disassembler: DisassemblerProcessor | None = None,
         mapper: SemanticMapperProcessor | None = None,
         builder: ISRBuilderProcessor | None = None,
@@ -31,8 +32,11 @@ class ArchitectureNormalizationPipeline(Processor):
         self.builder = builder or ISRBuilderProcessor()
 
     def process(self, item):
+        arch = str(item.get("arch", "unknown")).strip().lower() if isinstance(item, dict) else "unknown"
+        if arch not in ARCH_TO_ID:
+            arch = "unknown"
+        if arch == "unknown":
+            return self.builder.process({"semantic": [], "arch": arch})
         instructions = self.disassembler.process(item)
         mapped = self.mapper.process(instructions)
-        arch = item.get("arch", "x86") if isinstance(item, dict) else "x86"
         return self.builder.process({"semantic": mapped, "arch": arch})
-

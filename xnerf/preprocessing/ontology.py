@@ -22,12 +22,13 @@ SEMANTIC_CLASSES = [
 TOKEN_TO_ID = {token: idx for idx, token in enumerate(SEMANTIC_CLASSES)}
 
 ARCH_TO_ID = {
-    "x86": 0,
-    "x64": 1,
-    "arm": 2,
-    "arm64": 3,
-    "mips": 4,
-    "riscv": 5,
+    "unknown": 0,
+    "x86": 1,
+    "x64": 2,
+    "arm": 3,
+    "arm64": 4,
+    "mips": 5,
+    "riscv": 6,
 }
 
 MNEMONIC_TO_SEMANTIC = {
@@ -49,4 +50,3 @@ MNEMONIC_TO_SEMANTIC = {
 
 def semantic_id(label: str) -> int:
     return TOKEN_TO_ID.get(label, TOKEN_TO_ID["UNKNOWN"])
-

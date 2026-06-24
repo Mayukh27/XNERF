@@ -245,6 +245,8 @@ class MalwareManifestDataset(DatasetLoader):
         if self.require_cache:
             suffix = path.suffix.lower()
             likely_binary = row.get("data_type") not in {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"} and suffix in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+            unknown_arch = str(row.get("arch", "unknown")).strip().lower() == "unknown"
+            likely_binary = likely_binary and not unknown_arch
             if likely_binary and not isr_path:
                 derived = self._derived_isr_path(row)
                 if derived and derived.exists():
@@ -277,7 +279,7 @@ class MalwareManifestDataset(DatasetLoader):
             "network_ids": self._load_ids(row, "network_ids"),
             "memory_trace": self._memory_trace(row),
             "isr": isr,
-            "arch_id": torch.tensor(ARCH_TO_ID.get(row.get("arch", "x86"), 0), dtype=torch.long),
+            "arch_id": torch.tensor(ARCH_TO_ID.get(str(row.get("arch", "unknown")).strip().lower(), ARCH_TO_ID["unknown"]), dtype=torch.long),
             "label": torch.tensor(label, dtype=torch.long),
             "family_label": torch.tensor(-1 if invalid_family else self.family_to_id[family], dtype=torch.long),
             "dataset": row.get("dataset", "unknown"),
