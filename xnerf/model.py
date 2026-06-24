@@ -8,6 +8,7 @@ from xnerf.encoders.api import APIEncoder
 from xnerf.encoders.binary_image import BinaryImageEncoder
 from xnerf.encoders.memory import MemoryEncoder
 from xnerf.encoders.network import NetworkEncoder
+from xnerf.encoders.isr import ISREncoder
 from xnerf.fields.mnef import MNEF
 from xnerf.renderer.trajectory_decoder import TrajectoryDecoder
 from xnerf.synchronization.sfs import SemanticFieldSynchronizer
@@ -39,6 +40,7 @@ class XNERFPlusPlus(BaseModule):
         self.graph = CFGEncoder(node_dim=4)
         self.memory = MemoryEncoder()
         self.network = NetworkEncoder()
+        self.isr = ISREncoder()
         self.sfs = SemanticFieldSynchronizer()
         self.arch_embed = nn.Embedding(6, 64)
         self.memory_context = nn.Linear(512, 512)
@@ -58,10 +60,12 @@ class XNERFPlusPlus(BaseModule):
             embeddings["binary"] = self.binary(batch["binary_image"])
 
         if ("graph_x" in batch and "graph_edge_index" in batch and batch["graph_x"].numel() > 0):
-            embeddings["graph"] = self.graph(
+            embeddings["cfg"] = self.graph(
                 batch["graph_x"],
                 batch["graph_edge_index"],
                 batch["graph_batch"], )
+        if "isr" in batch and batch["isr"].numel() > 0:
+            embeddings["isr"] = self.isr(batch["isr"])
         semantic = self.sfs(embeddings, time_steps=self.field_time)
         pooled = semantic.mean(dim=1)
         aligned = self.aligner(pooled)
@@ -79,4 +83,3 @@ class XNERFPlusPlus(BaseModule):
             **field_out,
             **traj,
         }
-

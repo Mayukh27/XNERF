@@ -11,7 +11,7 @@ class SemanticFieldSynchronizer(BaseModule):
     """Cross-modal attention and temporal synchronization.
 
     Inputs:
-        embeddings: dict[str, FloatTensor [B,512]] for binary,cfg,api,memory,network.
+        embeddings: dict[str, FloatTensor [B,512]] for binary,cfg,api,memory,network,isr.
         time_steps: int, default 16.
     Outputs:
         unified: FloatTensor [B,time_steps,2048]
@@ -25,7 +25,7 @@ class SemanticFieldSynchronizer(BaseModule):
 
     def __init__(self, in_dim: int = 512, sync_dim: int = 512, out_dim: int = 2048, heads: int = 8, max_time: int = 128):
         super().__init__()
-        self.modalities = ("binary", "cfg", "api", "memory", "network")
+        self.modalities = ("binary", "cfg", "api", "memory", "network", "isr")
         self.proj = nn.ModuleDict({m: nn.Linear(in_dim, sync_dim) for m in self.modalities})
         self.type_embed = nn.Parameter(torch.randn(len(self.modalities), sync_dim) * 0.02)
         self.time_embed = nn.Embedding(max_time, sync_dim)
@@ -57,4 +57,3 @@ class SemanticFieldSynchronizer(BaseModule):
         logits = a @ b.t() / temperature
         labels = torch.arange(a.shape[0], device=a.device)
         return (F.cross_entropy(logits, labels) + F.cross_entropy(logits.t(), labels)) * 0.5
-
