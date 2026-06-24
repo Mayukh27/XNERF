@@ -12,7 +12,7 @@ class SandboxConfig:
     decision_threshold: float = 0.5
     num_classes: int = 2
     num_families: int = 32
-    arch: str = "x86"
+    arch: str = "unknown"
     device: str | None = None
 
 
@@ -70,7 +70,6 @@ def load_sandbox_config(config_path: str | Path | None = None) -> SandboxConfig:
         decision_threshold=float(sandbox_cfg.get("decision_threshold", 0.5)),
         num_classes=int(model_cfg.get("num_classes", 2)),
         num_families=int(model_cfg.get("num_families", 32)),
-        arch=str(sandbox_cfg.get("arch", "x86")),
+        arch=str(sandbox_cfg.get("arch", "unknown")).strip().lower(),
         device=sandbox_cfg.get("device"),
     )
-

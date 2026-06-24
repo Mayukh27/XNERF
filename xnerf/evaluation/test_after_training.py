@@ -44,27 +44,25 @@ def run_test(config_path: str, checkpoint_path: str | None = None, out_dir: str 
     ds = MalwareManifestDataset(test_manifest, require_cache=True)
     loader = DataLoader(ds, batch_size=cfg["training"].get("batch_size", 4), shuffle=False, num_workers=cfg["training"].get("num_workers", 2), collate_fn=collate_dicts)
 
-    probs, labels, embeddings, arch_probs, arch_labels = [], [], [], [], []
+    probs, labels, embeddings, arch_labels = [], [], [], []
     for batch in tqdm(loader, desc="test"):
         batch = move_to_device(batch, device)
         outputs = model(batch)
         probs.append(torch.softmax(outputs["malware_logits"], dim=-1).cpu().numpy())
         labels.append(batch["label"].cpu().numpy())
         embeddings.append(outputs["zero_shot_embedding"].cpu().numpy())
-        arch_probs.append(outputs["arch_logits"].argmax(dim=-1).cpu().numpy())
         arch_labels.append(batch["arch_id"].cpu().numpy())
 
     y_prob = np.concatenate(probs)
     y_true = np.concatenate(labels)
     emb = np.concatenate(embeddings)
-    arch_pred = np.concatenate(arch_probs)
     arch_true = np.concatenate(arch_labels)
 
-    metrics = evaluate_predictions(y_true, y_prob, arch_true=arch_true, arch_pred=arch_pred)
+    metrics = evaluate_predictions(y_true, y_prob, arch_true=arch_true)
     out_path = Path(out_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     (out_path / "test_metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
-    np.savez_compressed(out_path / "test_predictions.npz", y_true=y_true, y_prob=y_prob, embeddings=emb, arch_true=arch_true, arch_pred=arch_pred)
+    np.savez_compressed(out_path / "test_predictions.npz", y_true=y_true, y_prob=y_prob, embeddings=emb, arch_true=arch_true)
     save_confusion_matrix(y_true, y_prob.argmax(axis=1), out_path / "confusion_matrix.png")
     if len(y_true) >= 3:
         save_tsne(emb, y_true, out_path / "tsne.png")

@@ -8,6 +8,7 @@ from xnerf.encoders.api import APIEncoder
 from xnerf.encoders.binary_image import BinaryImageEncoder
 from xnerf.encoders.memory import MemoryEncoder
 from xnerf.encoders.network import NetworkEncoder
+from xnerf.encoders.isr import ISREncoder
 from xnerf.fields.mnef import MNEF
 from xnerf.renderer.trajectory_decoder import TrajectoryDecoder
 from xnerf.synchronization.sfs import SemanticFieldSynchronizer
@@ -39,11 +40,12 @@ class XNERFPlusPlus(BaseModule):
         self.graph = CFGEncoder(node_dim=4)
         self.memory = MemoryEncoder()
         self.network = NetworkEncoder()
+        self.isr = ISREncoder()
         self.sfs = SemanticFieldSynchronizer()
-        self.arch_embed = nn.Embedding(6, 64)
+        self.arch_embed = nn.Embedding(7, 64)
         self.memory_context = nn.Linear(512, 512)
         self.mnef = MNEF()
-        self.aligner = CrossArchitectureAligner(feature_dim=2048)
+        self.aligner = CrossArchitectureAligner(feature_dim=2048, num_arch=7)
         self.renderer = TrajectoryDecoder()
         self.malware_head = nn.Linear(2048, num_classes)
         self.family_head = nn.Linear(2048, num_families)
@@ -58,16 +60,18 @@ class XNERFPlusPlus(BaseModule):
             embeddings["binary"] = self.binary(batch["binary_image"])
 
         if ("graph_x" in batch and "graph_edge_index" in batch and batch["graph_x"].numel() > 0):
-            embeddings["graph"] = self.graph(
+            embeddings["cfg"] = self.graph(
                 batch["graph_x"],
                 batch["graph_edge_index"],
                 batch["graph_batch"], )
+        if "isr" in batch and batch["isr"].numel() > 0:
+            embeddings["isr"] = self.isr(batch["isr"])
         semantic = self.sfs(embeddings, time_steps=self.field_time)
         pooled = semantic.mean(dim=1)
         aligned = self.aligner(pooled)
         b, t, _ = semantic.shape
         coords = torch.linspace(0, 1, t, device=semantic.device).view(1, t, 1).expand(b, t, 1)
-        arch = self.arch_embed(batch["arch_id"]).unsqueeze(1).expand(b, t, 64)
+        arch = self.arch_embed(batch["arch_id"].clamp(min=0, max=self.arch_embed.num_embeddings - 1)).unsqueeze(1).expand(b, t, 64)
         mem = self.memory_context(embeddings["memory"]).unsqueeze(1).expand(b, t, 512)
         field_out = self.mnef(coords, coords, semantic, mem, arch)
         traj = self.renderer(field_out["field"])
@@ -79,4 +83,3 @@ class XNERFPlusPlus(BaseModule):
             **field_out,
             **traj,
         }
-

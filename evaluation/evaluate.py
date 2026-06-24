@@ -47,7 +47,7 @@ def evaluate_manifest(config_path: Path, manifest: Path, checkpoint: Path, out_d
         num_workers=int(cfg["training"].get("num_workers", 2)),
     )
 
-    probs, labels, arch_true, arch_pred = [], [], [], []
+    probs, labels, arch_true = [], [], []
     family_pred = []
     for batch in tqdm(loader, desc="evaluate"):
         batch = move_to_device(batch, device)
@@ -55,19 +55,16 @@ def evaluate_manifest(config_path: Path, manifest: Path, checkpoint: Path, out_d
         probs.append(torch.softmax(outputs["malware_logits"], dim=-1).cpu().numpy())
         labels.append(batch["label"].cpu().numpy())
         arch_true.append(batch["arch_id"].cpu().numpy())
-        arch_pred.append(outputs["arch_logits"].argmax(dim=-1).cpu().numpy())
         family_pred.append(outputs["family_logits"].argmax(dim=-1).cpu().numpy())
 
     y_prob = np.concatenate(probs)
     y_true = np.concatenate(labels)
     arch_true_arr = np.concatenate(arch_true)
-    arch_pred_arr = np.concatenate(arch_pred)
     family_pred_arr = np.concatenate(family_pred)
     metrics = classification_metrics(
         y_true=y_true,
         y_prob=y_prob,
         arch_true=arch_true_arr,
-        arch_pred=arch_pred_arr,
     )
     out_dir.mkdir(parents=True, exist_ok=True)
     write_standard_results(metrics, y_true, y_prob, out_dir)
@@ -76,7 +73,6 @@ def evaluate_manifest(config_path: Path, manifest: Path, checkpoint: Path, out_d
         y_true=y_true,
         y_prob=y_prob,
         arch_true=arch_true_arr,
-        arch_pred=arch_pred_arr,
         family_pred=family_pred_arr,
     )
     return metrics

@@ -54,6 +54,10 @@ def family_name(index: int, checkpoint_meta: dict[str, Any] | None = None) -> st
     return f"family_{index}"
 
 
+def architecture_name(index: int) -> str:
+    return ID_TO_ARCH.get(index, "unknown")
+
+
 def load_model(config: SandboxConfig, device: torch.device) -> tuple[XNERFPlusPlus, dict[str, Any]]:
     checkpoint = Path(config.checkpoint)
     if not checkpoint.exists():
@@ -100,7 +104,6 @@ def run_inference(file_path: str | Path, config: SandboxConfig) -> dict[str, Any
     malware_prob = torch.softmax(outputs["malware_logits"], dim=-1)[0, -1].item()
     class_probs = torch.softmax(outputs["malware_logits"], dim=-1)[0]
     family_idx = int(torch.softmax(outputs["family_logits"], dim=-1)[0].argmax().item())
-    arch_idx = int(outputs["arch_logits"][0].argmax().item())
     elapsed = time.perf_counter() - started
     metadata = features["metadata"]
 
@@ -111,7 +114,7 @@ def run_inference(file_path: str | Path, config: SandboxConfig) -> dict[str, Any
         "malware_probability": malware_prob,
         "decision": "Malware" if malware_prob >= config.decision_threshold else "Benign",
         "predicted_family": family_name(family_idx, checkpoint_meta),
-        "predicted_architecture": ID_TO_ARCH.get(arch_idx, f"arch_{arch_idx}"),
+        "input_architecture": metadata.get("arch", "unknown"),
         "confidence_score": float(class_probs.max().item()),
         "inference_time_seconds": elapsed,
         "checkpoint": str(config.checkpoint),
@@ -128,9 +131,8 @@ def format_terminal_report(result: dict[str, Any]) -> str:
             f"Malware Probability: {result['malware_probability']:.6f}",
             f"Malware/Benign Decision: {result['decision']}",
             f"Predicted Family: {result['predicted_family']}",
-            f"Predicted Architecture: {result['predicted_architecture']}",
+            f"Input Architecture: {result['input_architecture']}",
             f"Confidence Score: {result['confidence_score']:.6f}",
             f"Inference Time: {result['inference_time_seconds']:.3f}s",
         ]
     )
-

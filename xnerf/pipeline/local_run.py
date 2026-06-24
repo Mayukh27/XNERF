@@ -267,7 +267,9 @@ def run_local_pipeline(
         "recall":                      test_metrics.get("recall"),
         "f1":                          test_metrics.get("f1"),
         "roc_auc":                     test_metrics.get("roc_auc"),
+        "architecture_malware_accuracy": test_metrics.get("architecture_malware_accuracy"),
         "cross_architecture_accuracy": test_metrics.get("cross_architecture_accuracy"),
+        "per_architecture_accuracy":   test_metrics.get("per_architecture_accuracy"),
         "zero_shot_accuracy":          zero_shot_metrics.get("zero_shot_accuracy"),
         "zero_shot_f1":                zero_shot_metrics.get("zero_shot_f1"),
     }

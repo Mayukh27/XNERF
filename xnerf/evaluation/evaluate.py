@@ -9,6 +9,8 @@ import torch
 from sklearn.manifold import TSNE
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, precision_score, recall_score, roc_auc_score
 
+from xnerf.preprocessing.ontology import ARCH_TO_ID
+
 
 def evaluate_predictions(y_true: np.ndarray, y_prob: np.ndarray, arch_true: np.ndarray | None = None, arch_pred: np.ndarray | None = None, zero_shot_mask: np.ndarray | None = None) -> dict:
     y_pred = y_prob.argmax(axis=1)
@@ -22,8 +24,23 @@ def evaluate_predictions(y_true: np.ndarray, y_prob: np.ndarray, arch_true: np.n
         metrics["roc_auc"] = roc_auc_score(y_true, y_prob[:, 1])
     if zero_shot_mask is not None and zero_shot_mask.any():
         metrics["zero_shot_accuracy"] = accuracy_score(y_true[zero_shot_mask], y_pred[zero_shot_mask])
-    if arch_true is not None and arch_pred is not None:
-        metrics["cross_architecture_accuracy"] = accuracy_score(arch_true, arch_pred)
+    if arch_true is not None:
+        arch_true_arr = np.asarray(arch_true)
+        mask = arch_true_arr != ARCH_TO_ID["unknown"]
+        if mask.any():
+            arch_malware_accuracy = accuracy_score(y_true[mask], y_pred[mask])
+            metrics["architecture_malware_accuracy"] = arch_malware_accuracy
+            metrics["cross_architecture_accuracy"] = arch_malware_accuracy
+            id_to_arch = {idx: name for name, idx in ARCH_TO_ID.items()}
+            per_architecture_accuracy = {}
+            for arch_id in sorted(set(arch_true_arr[mask].tolist())):
+                arch_mask = arch_true_arr == arch_id
+                per_architecture_accuracy[id_to_arch.get(int(arch_id), f"arch_{int(arch_id)}")] = accuracy_score(y_true[arch_mask], y_pred[arch_mask])
+            metrics["per_architecture_accuracy"] = per_architecture_accuracy
+        else:
+            metrics["architecture_malware_accuracy"] = None
+            metrics["cross_architecture_accuracy"] = None
+            metrics["per_architecture_accuracy"] = {}
     return metrics
 
 
@@ -79,4 +96,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

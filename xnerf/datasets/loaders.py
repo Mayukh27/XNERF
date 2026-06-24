@@ -12,7 +12,7 @@ import torch
 
 import networkx as nx
 
-from xnerf.datasets.family_cleaning import build_family_vocabulary, load_family_normalization_rules, normalize_family_name
+from xnerf.datasets.family_cleaning import build_family_vocabulary, family_placeholder_reason, load_family_normalization_rules, normalize_family_name
 from xnerf.preprocessing.ontology import ARCH_TO_ID
 from xnerf.utils.base import DatasetLoader
 from xnerf.utils.io import read_jsonl, sha256_file
@@ -234,14 +234,19 @@ class MalwareManifestDataset(DatasetLoader):
             graph_x, graph_edge_index = self._load_graph(path)
 
 
-        family = normalize_family_name(row.get("family", "unknown"), label=row.get("label", 0), rules=self.family_rules)
-        if family not in self.family_to_id:
+        raw_family = row.get("family", "unknown")
+        label = int(row.get("label", 0))
+        family = normalize_family_name(raw_family, label=label, rules=self.family_rules)
+        invalid_family = label == 1 and family_placeholder_reason(raw_family, rules=self.family_rules) is not None
+        if not invalid_family and family not in self.family_to_id:
             raise KeyError(f"family '{family}' missing from vocabulary for {self.manifest_path}")
         isr = torch.zeros(self.isr_len, 4, dtype=torch.long)
         isr_path = row.get("isr_path")
         if self.require_cache:
             suffix = path.suffix.lower()
             likely_binary = row.get("data_type") not in {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"} and suffix in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+            unknown_arch = str(row.get("arch", "unknown")).strip().lower() == "unknown"
+            likely_binary = likely_binary and not unknown_arch
             if likely_binary and not isr_path:
                 derived = self._derived_isr_path(row)
                 if derived and derived.exists():
@@ -274,9 +279,9 @@ class MalwareManifestDataset(DatasetLoader):
             "network_ids": self._load_ids(row, "network_ids"),
             "memory_trace": self._memory_trace(row),
             "isr": isr,
-            "arch_id": torch.tensor(ARCH_TO_ID.get(row.get("arch", "x86"), 0), dtype=torch.long),
-            "label": torch.tensor(int(row.get("label", 0)), dtype=torch.long),
-            "family_label": torch.tensor(self.family_to_id[family], dtype=torch.long),
+            "arch_id": torch.tensor(ARCH_TO_ID.get(str(row.get("arch", "unknown")).strip().lower(), ARCH_TO_ID["unknown"]), dtype=torch.long),
+            "label": torch.tensor(label, dtype=torch.long),
+            "family_label": torch.tensor(-1 if invalid_family else self.family_to_id[family], dtype=torch.long),
             "dataset": row.get("dataset", "unknown"),
             "family": row.get("family", "unknown"),
             "path": row.get("path", ""),

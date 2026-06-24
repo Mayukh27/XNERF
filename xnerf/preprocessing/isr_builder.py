@@ -25,12 +25,12 @@ class ISRBuilderProcessor(Processor):
         self.max_delta_bucket = max_delta_bucket
 
     def process(self, item) -> torch.Tensor:
-        arch = "x86"
+        arch = "unknown"
         rows = item
         if isinstance(item, dict):
             rows = item["semantic"]
             arch = item.get("arch", arch).lower()
-        arch_id = ARCH_TO_ID.get(arch, 0)
+        arch_id = ARCH_TO_ID.get(arch, ARCH_TO_ID["unknown"])
         out = torch.zeros(self.max_len, 4, dtype=torch.long)
         prev_addr = rows[0]["address"] if rows else 0
         for i, row in enumerate(rows[: self.max_len]):
@@ -41,4 +41,3 @@ class ISRBuilderProcessor(Processor):
             out[i, 2] = min(delta, self.max_delta_bucket)
             out[i, 3] = int(row.get("size", 0))
         return out
-

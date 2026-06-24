@@ -39,7 +39,7 @@ def infer_arch(path: Path) -> str:
     for arch in ("arm64", "arm","mipsel", "mips", "riscv", "x64", "x86"):
         if arch in text:
             return arch
-    return "x86"
+    return "unknown"
 
 def should_keep_iotmal_sample(family: str) -> bool:
     family = str(family).strip()
@@ -978,14 +978,17 @@ def build_manifest(
                     record["isr_path"] = ""
                 if not manifest_only and is_binary_candidate:
                     arch = record["arch"]
-                    normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
-                    blob = path.read_bytes()
-                    isr = normalizers[arch].process({"bytes": blob, "arch": arch})
-                    isr_path = cache / f"{record['sha256']}.pt"
-                    import torch
+                    if arch != "unknown":
+                        normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
+                        blob = path.read_bytes()
+                        isr = normalizers[arch].process({"bytes": blob, "arch": arch})
+                        isr_path = cache / f"{record['sha256']}.pt"
+                        import torch
 
-                    torch.save(isr, isr_path)
-                    record["isr_path"] = str(isr_path)
+                        torch.save(isr, isr_path)
+                        record["isr_path"] = str(isr_path)
+                    else:
+                        record["isr_path"] = ""
                 emit_row(record)
                 if not manifest_only:
                     marker.write_text(str(path), encoding="utf-8")
@@ -1068,14 +1071,17 @@ def build_manifest(
             record["isr_path"] = ""
         if not manifest_only and is_binary_candidate:
             arch = record["arch"]
-            normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
-            blob = path.read_bytes()
-            isr = normalizers[arch].process({"bytes": blob, "arch": arch})
-            isr_path = cache / f"{record['sha256']}.pt"
-            import torch
+            if arch != "unknown":
+                normalizers.setdefault(arch, ArchitectureNormalizationPipeline(arch=arch))
+                blob = path.read_bytes()
+                isr = normalizers[arch].process({"bytes": blob, "arch": arch})
+                isr_path = cache / f"{record['sha256']}.pt"
+                import torch
 
-            torch.save(isr, isr_path)
-            record["isr_path"] = str(isr_path)
+                torch.save(isr, isr_path)
+                record["isr_path"] = str(isr_path)
+            else:
+                record["isr_path"] = ""
         rows.append(record)
     if not rows:
         raise RuntimeError(f"No dataset files found under {raw}. Missing datasets are allowed, but at least one usable dataset is required.")

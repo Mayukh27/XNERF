@@ -61,18 +61,22 @@ def memory_trace_from_bytes(data: bytes, rows: int = 512, cols: int = 8) -> torc
     return out.view(rows, cols)
 
 
-def extract_modalities(path: str | Path, arch: str = "x86") -> dict[str, Any]:
+def extract_modalities(path: str | Path, arch: str = "unknown") -> dict[str, Any]:
     sample_path = Path(path)
+    arch = str(arch).strip().lower()
     validate_input_file(sample_path)
     try:
         data = sample_path.read_bytes()
     except OSError as exc:
         raise FeatureExtractionError(f"feature extraction failed while reading {sample_path}") from exc
 
-    try:
-        isr = ArchitectureNormalizationPipeline(arch=arch).process({"bytes": data, "arch": arch})
-    except Exception as exc:
-        raise FeatureExtractionError(f"ISR feature extraction failed for {sample_path}: {type(exc).__name__}: {exc}") from exc
+    if arch == "unknown":
+        isr = torch.zeros(1024, 4, dtype=torch.long)
+    else:
+        try:
+            isr = ArchitectureNormalizationPipeline(arch=arch).process({"bytes": data, "arch": arch})
+        except Exception as exc:
+            raise FeatureExtractionError(f"ISR feature extraction failed for {sample_path}: {type(exc).__name__}: {exc}") from exc
 
     sha256 = hashlib.sha256(data).hexdigest()
     return {
@@ -81,7 +85,7 @@ def extract_modalities(path: str | Path, arch: str = "x86") -> dict[str, Any]:
         "api_ids": torch.zeros(256, dtype=torch.long),
         "network_ids": torch.zeros(256, dtype=torch.long),
         "isr": isr[:1024].long(),
-        "arch_id": torch.tensor(ARCH_TO_ID.get(arch, 0), dtype=torch.long),
+        "arch_id": torch.tensor(ARCH_TO_ID.get(arch, ARCH_TO_ID["unknown"]), dtype=torch.long),
         "label": torch.tensor(0, dtype=torch.long),
         "metadata": {
             "path": str(sample_path),
@@ -99,4 +103,3 @@ def make_model_batch(features: dict[str, Any], device: torch.device) -> dict[str
         if isinstance(value, torch.Tensor):
             batch[key] = value.unsqueeze(0).to(device)
     return batch
-
