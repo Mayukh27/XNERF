@@ -40,7 +40,7 @@ def _resolve_checkpoint_path(checkpoint: str | Path) -> Path:
         Path("checkpoints_balanced_small/best.pt"),
         Path("checkpoints_balanced_small/last.pt"),
         Path("checkpoints_balanced_label_modality/last.pt"),
-        Path("checkpoints_balanced_label_modality/best.pt"),
+        Path("checkpoints_publication_v2_50k/best.pt"),
     ]
     for fallback in fallback_candidates:
         if fallback.exists():
@@ -50,7 +50,7 @@ def _resolve_checkpoint_path(checkpoint: str | Path) -> Path:
 
 
 def load_sandbox_config(config_path: str | Path | None = None) -> SandboxConfig:
-    path = Path(config_path or os.getenv("XNERF_SANDBOX_CONFIG", "config.yaml"))
+    path = Path(config_path or os.getenv("XNERF_SANDBOX_CONFIG", "config_publication_v2_50k.yaml"))
     cfg = _load_yaml(path)
     model_cfg = cfg.get("model", {}) if isinstance(cfg.get("model", {}), dict) else {}
     sandbox_cfg = cfg.get("sandbox", {}) if isinstance(cfg.get("sandbox", {}), dict) else {}
@@ -62,7 +62,7 @@ def load_sandbox_config(config_path: str | Path | None = None) -> SandboxConfig:
         or sandbox_cfg.get("checkpoint")
         or export_cfg.get("checkpoint")
         or local_cfg.get("checkpoint")
-        or "checkpoints/best_model.pt"
+        or "checkpoints_publication_v2_50k/best.pt"
     )
 
     return SandboxConfig(

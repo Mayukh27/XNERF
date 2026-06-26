@@ -116,30 +116,24 @@ def collate_dicts(items):
         graph_batch = []
 
         node_offset = 0
+        graph_id = 0
+        graph_sample_ids = []
 
         for i, sample in enumerate(items):
+
             gx = sample.get("graph_x")
             ge = sample.get("graph_edge_index")
 
-            if (
-                not isinstance(gx, torch.Tensor)
-                or gx.numel() == 0
-            ):
+            if (not isinstance(gx, torch.Tensor)  or gx.numel() == 0):
                 continue
 
             graph_x.append(gx)
 
-            graph_edge_index.append(
-                ge + node_offset
-            )
+            graph_edge_index.append(ge + node_offset )
 
-            graph_batch.append(
-                torch.full(
-                    (gx.shape[0],),
-                    i,
-                    dtype=torch.long,
-                )
-            )
+            graph_batch.append( torch.full( (gx.shape[0],), graph_id, dtype=torch.long, ) )
+            graph_sample_ids.append(i)
+            graph_id += 1
 
             node_offset += gx.shape[0]
         
@@ -148,16 +142,15 @@ def collate_dicts(items):
             graph_edge_index,
             dim=1,
         )
-        out["graph_batch"] = torch.cat(
-            graph_batch,
-            dim=0,
-        )
+        out["graph_batch"] = torch.cat( graph_batch, dim=0,)
+        out["graph_sample_ids"] = torch.tensor( graph_sample_ids, dtype=torch.long,)
     else:
             out["graph_x"] = torch.zeros((0, 4),dtype=torch.float32,)
 
             out["graph_edge_index"] = torch.zeros((2, 0),dtype=torch.long,)
 
             out["graph_batch"] = torch.zeros((0,),dtype=torch.long,)
+            out["graph_sample_ids"] = torch.zeros((0,), dtype=torch.long)
 
     # ----- Everything else -----
     for key in items[0].keys():
