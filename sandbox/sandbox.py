@@ -20,7 +20,7 @@ def main() -> int:
     parser.add_argument("file_path", type=Path)
     parser.add_argument("--config", default=None, help="YAML config path; defaults to config.yaml")
     parser.add_argument("--checkpoint", default=None, help="Override configured checkpoint path")
-    parser.add_argument("--arch", default=None, help="Architecture hint: x86, x64, arm, arm64, mips, riscv")
+    parser.add_argument("--arch", default=None, help="Optional architecture override, e.g. x86, x64, arm, arm64, mips, mipsel, riscv")
     args = parser.parse_args()
 
     try:
@@ -46,4 +46,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -8,6 +8,8 @@ from uuid import uuid4
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import traceback
+
 
 from xnerf.datasets.validation import validate_family_batch
 from xnerf.training.losses import classification_losses, total_loss
@@ -246,6 +248,8 @@ class XNerfTrainer(Trainer):
                 if torch.is_tensor(value):
                     self._check_finite_tensor(name, value, batch, batch_idx, "loss term")
             loss = total_loss(losses)
+            if batch_idx > 9180:
+              print(batch_idx, {k: float(v.detach().cpu()) for k, v in losses.items()})
         if not torch.isfinite(loss):
             details = {
                 name: float(value.detach().cpu())
@@ -257,8 +261,18 @@ class XNerfTrainer(Trainer):
                 batch,
                 batch_idx,
             )
+        if batch_idx > 9180:
+               print("TOTAL LOSS =", float(loss.detach().cpu()))
         if train:
-            self.scaler.scale(loss / self.grad_accum).backward()
+            try:
+               self.scaler.scale(loss / self.grad_accum).backward()
+            except Exception as e:
+                  print("\nFAILED AT TRAIN BATCH:", batch_idx)
+                  print("LOSS =", float(loss.detach().cpu()))
+                  print("LOSSES =", {k: float(v.detach().cpu()) for k, v in losses.items()})
+                  print(self._batch_diagnostics(batch, batch_idx))
+                  traceback.print_exc()
+                  raise
         return float(loss.detach().cpu())
 
     def fit(self) -> dict[str, Any]:

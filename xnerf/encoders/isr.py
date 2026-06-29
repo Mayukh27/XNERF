@@ -3,7 +3,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from xnerf.preprocessing.ontology import SEMANTIC_TO_ID
+from xnerf.preprocessing.ontology import TOKEN_TO_ID
 from xnerf.utils.base import BaseModule
 
 
@@ -24,7 +24,7 @@ class ISREncoder(BaseModule):
 
     def __init__(self, hidden_dim: int = 256, out_dim: int = 512):
         super().__init__()
-        self.semantic = nn.Embedding(len(SEMANTIC_TO_ID), hidden_dim, padding_idx=0)
+        self.semantic = nn.Embedding(len(TOKEN_TO_ID), hidden_dim, padding_idx=0)
         self.arch = nn.Embedding(7, hidden_dim, padding_idx=0)
         self.delta = nn.Embedding(256, hidden_dim, padding_idx=0)
         self.size = nn.Embedding(32, hidden_dim, padding_idx=0)
@@ -46,6 +46,15 @@ class ISREncoder(BaseModule):
         delta = ids[..., 2].clamp(0, self.delta.num_embeddings - 1)
         size = ids[..., 3].clamp(0, self.size.num_embeddings - 1)
         pad_mask = semantic.eq(0)
+
+        all_pad = pad_mask.all(dim=1)
+
+        if torch.all(all_pad):
+           return torch.zeros( isr.shape[0], self.proj.out_features, device=isr.device, dtype=self.proj.weight.dtype,)
+        
+        if torch.any(all_pad):
+             pad_mask = pad_mask.clone()
+             pad_mask[all_pad, 0] = False
         h = (
             self.semantic(semantic)
             + self.arch(arch)

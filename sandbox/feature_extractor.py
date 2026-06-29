@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
 
-from xnerf.preprocessing.ontology import ARCH_TO_ID
-from xnerf.preprocessing.pipeline import ArchitectureNormalizationPipeline
+from xnerf.preprocessing.static_features import (
+    binary_image_from_bytes,
+    extract_static_modalities,
+    zero_memory_trace,
+)
 
 
 SUPPORTED_EXTENSIONS = {
@@ -43,22 +44,17 @@ def validate_input_file(path: Path) -> None:
         raise FeatureExtractionError(f"could not read file: {path}") from exc
 
 
-def binary_image_from_bytes(data: bytes, image_size: int = 256) -> torch.Tensor:
-    values = np.frombuffer(data[: image_size * image_size], dtype=np.uint8)
-    if values.size == 0:
-        values = np.zeros(1, dtype=np.uint8)
-    values = np.pad(values, (0, max(0, image_size * image_size - values.size)))[: image_size * image_size]
-    return torch.from_numpy(values.reshape(1, image_size, image_size).astype("float32") / 255.0)
-
-
 def memory_trace_from_bytes(data: bytes, rows: int = 512, cols: int = 8) -> torch.Tensor:
-    out = torch.zeros(rows * cols, dtype=torch.float32)
-    if data:
-        values = torch.tensor(list(data[: rows * cols]), dtype=torch.float32)
-        if values.numel() > 1:
-            values = (values - values.mean()) / values.std().clamp_min(1e-6)
-        out[: values.numel()] = torch.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-    return out.view(rows, cols)
+    """Deprecated compatibility wrapper.
+
+    Training only supplies memory traces from cached feature-vector tensors. A
+    standalone binary has no training-equivalent memory cache, so this returns
+    the same zero tensor shape the DatasetLoader would emit.
+    """
+
+    if rows == 512 and cols == 8:
+        return zero_memory_trace()
+    return torch.zeros(rows, cols, dtype=torch.float32)
 
 
 def extract_modalities(path: str | Path, arch: str = "unknown") -> dict[str, Any]:
@@ -66,40 +62,23 @@ def extract_modalities(path: str | Path, arch: str = "unknown") -> dict[str, Any
     arch = str(arch).strip().lower()
     validate_input_file(sample_path)
     try:
-        data = sample_path.read_bytes()
+        return extract_static_modalities(sample_path, arch_hint=arch)
     except OSError as exc:
         raise FeatureExtractionError(f"feature extraction failed while reading {sample_path}") from exc
-
-    if arch == "unknown":
-        isr = torch.zeros(1024, 4, dtype=torch.long)
-    else:
-        try:
-            isr = ArchitectureNormalizationPipeline(arch=arch).process({"bytes": data, "arch": arch})
-        except Exception as exc:
-            raise FeatureExtractionError(f"ISR feature extraction failed for {sample_path}: {type(exc).__name__}: {exc}") from exc
-
-    sha256 = hashlib.sha256(data).hexdigest()
-    return {
-        "binary_image": binary_image_from_bytes(data),
-        "memory_trace": memory_trace_from_bytes(data),
-        "api_ids": torch.zeros(256, dtype=torch.long),
-        "network_ids": torch.zeros(256, dtype=torch.long),
-        "isr": isr[:1024].long(),
-        "arch_id": torch.tensor(ARCH_TO_ID.get(arch, ARCH_TO_ID["unknown"]), dtype=torch.long),
-        "label": torch.tensor(0, dtype=torch.long),
-        "metadata": {
-            "path": str(sample_path),
-            "file_name": sample_path.name,
-            "size_bytes": len(data),
-            "sha256": sha256,
-            "arch": arch,
-        },
-    }
+    except Exception as exc:
+        raise FeatureExtractionError(f"feature extraction failed for {sample_path}: {type(exc).__name__}: {exc}") from exc
 
 
 def make_model_batch(features: dict[str, Any], device: torch.device) -> dict[str, torch.Tensor]:
     batch = {}
     for key, value in features.items():
         if isinstance(value, torch.Tensor):
-            batch[key] = value.unsqueeze(0).to(device)
+            if key in {"graph_x", "graph_edge_index"}:
+                batch[key] = value.to(device)
+            else:
+                batch[key] = value.unsqueeze(0).to(device)
+    graph_x = batch.get("graph_x")
+    if graph_x is not None and graph_x.numel() > 0:
+        batch["graph_batch"] = torch.zeros(graph_x.shape[0], dtype=torch.long, device=device)
+        batch["graph_sample_ids"] = torch.zeros(1, dtype=torch.long, device=device)
     return batch

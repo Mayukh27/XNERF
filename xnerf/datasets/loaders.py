@@ -7,13 +7,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
-
-import networkx as nx
 
 from xnerf.datasets.family_cleaning import build_family_vocabulary, family_placeholder_reason, load_family_normalization_rules, normalize_family_name
 from xnerf.preprocessing.ontology import ARCH_TO_ID
+from xnerf.preprocessing.static_features import binary_image_from_file, load_edgelist_graph
 from xnerf.utils.base import DatasetLoader
 from xnerf.utils.io import read_jsonl, sha256_file
 
@@ -115,47 +113,20 @@ class MalwareManifestDataset(DatasetLoader):
         return len(self.rows)
 
     def _binary_image(self, path: Path) -> torch.Tensor:
-        data = np.frombuffer(path.read_bytes()[: self.image_size * self.image_size], dtype=np.uint8)
-        if data.size == 0:
-            data = np.zeros(1, dtype=np.uint8)
-        data = np.pad(data, (0, max(0, self.image_size * self.image_size - data.size)))[: self.image_size * self.image_size]
-        return torch.from_numpy(data.reshape(1, self.image_size, self.image_size).astype("float32") / 255.0)
+        try:
+            return binary_image_from_file(path, image_size=self.image_size)
+        except Exception as e:
+            print("\n========== BINARY IMAGE LOAD FAILED ==========")
+            print("Path      :", repr(path))
+            print("Exists    :", path.exists())
+            print("Is file   :", path.is_file())
+            print("Absolute  :", path.resolve())
+            print("Exception :", repr(e))
+            print("==============================================")
+            raise
    
     def _load_graph(self, path):
-     try:
-        g = nx.read_edgelist(path, nodetype=str)
-
-        nodes = list(g.nodes())
-        node_to_idx = {n: i for i, n in enumerate(nodes)}
-
-        edges = []
-        for u, v in g.edges():
-            edges.append([node_to_idx[u], node_to_idx[v]])
-            edges.append([node_to_idx[v], node_to_idx[u]])
-
-        if not edges:
-            return (torch.zeros((0, 4), dtype=torch.float32), torch.zeros((2, 0), dtype=torch.long),)
-        
-        edge_index = torch.tensor(edges, dtype=torch.long).t().contiguous()
-
-        deg = dict(g.degree())
-
-        x = []
-        max_deg = max(deg.values()) if deg else 1
-
-        for n in nodes:
-            d = float(deg[n])
-            x.append([d,d,d, d / max(max_deg, 1),])
-
-        x = torch.tensor(x, dtype=torch.float32)
-
-        return x, edge_index
-
-     except Exception:
-        return (
-            torch.zeros((0, 4), dtype=torch.float32),
-            torch.zeros((2, 0), dtype=torch.long),
-        )
+        return load_edgelist_graph(path)
     
     
     def _source_file_key(self, path: Path) -> str:

@@ -60,12 +60,19 @@ class XNERFPlusPlus(BaseModule):
             embeddings["binary"] = self.binary(batch["binary_image"])
 
         if ("graph_x" in batch and "graph_edge_index" in batch and batch["graph_x"].numel() > 0):
-            embeddings["cfg"] = self.graph(
-                batch["graph_x"],
-                batch["graph_edge_index"],
-                batch["graph_batch"], )
+               cfg = self.graph( batch["graph_x"], batch["graph_edge_index"], batch["graph_batch"],)  
+               batch_size = batch["api_ids"].shape[0]
+               cfg_full = torch.zeros( batch_size, cfg.shape[1], device=cfg.device, dtype=cfg.dtype,)
+               cfg_full[batch["graph_sample_ids"]] = cfg
+               embeddings["cfg"] = cfg_full
+
+        else:
+             embeddings["cfg"] = torch.zeros( batch["api_ids"].shape[0], 512, device=batch["api_ids"].device, )      
+        
+        
         if "isr" in batch and batch["isr"].numel() > 0:
             embeddings["isr"] = self.isr(batch["isr"])
+
         semantic = self.sfs(embeddings, time_steps=self.field_time)
         pooled = semantic.mean(dim=1)
         aligned = self.aligner(pooled)

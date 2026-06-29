@@ -14,6 +14,7 @@ from collections import defaultdict
 from xnerf.datasets.family_cleaning import build_family_vocabulary, load_family_normalization_rules
 from xnerf.datasets.family_cleaning import normalize_family_name
 from xnerf.preprocessing.pipeline import ArchitectureNormalizationPipeline
+from xnerf.preprocessing.static_features import build_memory_trace as shared_build_memory_trace
 from xnerf.sandbox.cape_parser import parse_cape_report
 from xnerf.utils.io import read_jsonl, sha256_file, write_jsonl
 from xnerf.utils.tokenization import tokens_to_ids
@@ -263,15 +264,7 @@ def feature_family_from_path(path: Path) -> str:
 
 
 def build_memory_trace(features: list[float], rows: int = 512, cols: int = 8):
-    import torch
-
-    out = torch.zeros(rows * cols, dtype=torch.float32)
-    if features:
-        values = torch.tensor(features[: rows * cols], dtype=torch.float32)
-        if values.numel() > 1:
-            values = (values - values.mean()) / values.std().clamp_min(1e-6)
-        out[: values.numel()] = values
-    return out.view(rows, cols)
+    return shared_build_memory_trace(features, rows=rows, cols=cols)
 
 
 def feature_tensor_path(feature_cache: Path, file_key: str, source_name: str, row_index: int, sample_id: str) -> Path:

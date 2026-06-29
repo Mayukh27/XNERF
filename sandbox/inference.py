@@ -95,6 +95,39 @@ def run_inference(file_path: str | Path, config: SandboxConfig) -> dict[str, Any
     features = extract_modalities(file_path, arch=config.arch)
     model, checkpoint_meta = load_model(config, device)
     batch = make_model_batch(features, device)
+    print("\n========== SANDBOX SAMPLE ==========")
+
+    print("Binary")
+    print(" shape:", batch["binary_image"].shape)
+    print(" mean :", batch["binary_image"].float().mean().item())
+    print(" max  :", batch["binary_image"].float().max().item())
+
+    print("\nMemory")
+    print(" shape:", batch["memory_trace"].shape)
+    print(" mean :", batch["memory_trace"].float().mean().item())
+    print(" max  :", batch["memory_trace"].float().max().item())
+
+    print("\nAPI")
+    print(" shape:", batch["api_ids"].shape)
+    print(" nonzero:", (batch["api_ids"] != 0).sum().item())
+    print(" sum:", batch["api_ids"].sum().item())
+
+    print("\nNetwork")
+    print(" shape:", batch["network_ids"].shape)
+    print(" nonzero:", (batch["network_ids"] != 0).sum().item())
+    print(" sum:", batch["network_ids"].sum().item())
+
+    print("\nISR")
+    print(" shape:", batch["isr"].shape)
+    print(" sum:", batch["isr"].sum().item())
+
+    print("\nCFG")
+    print(" nodes:", batch["graph_x"].shape)
+    print(" edges:", batch["graph_edge_index"].shape)
+
+    print("\nArch:", batch["arch_id"].item())
+    print("===================================\n")
+
     try:
         outputs = model(batch)
     except Exception as exc:
@@ -111,10 +144,18 @@ def run_inference(file_path: str | Path, config: SandboxConfig) -> dict[str, Any
         "file_name": metadata["file_name"],
         "file_path": metadata["path"],
         "sha256": metadata["sha256"],
+        "executable_format": metadata.get("format", "unknown"),
         "malware_probability": malware_prob,
         "decision": "Malware" if malware_prob >= config.decision_threshold else "Benign",
         "predicted_family": family_name(family_idx, checkpoint_meta),
         "input_architecture": metadata.get("arch", "unknown"),
+        "detected_architecture_raw": metadata.get("arch_raw", "unknown"),
+        "api_token_count": metadata.get("api_token_count", 0),
+        "network_token_count": metadata.get("network_token_count", 0),
+        "cfg_node_count": metadata.get("cfg_node_count", 0),
+        "cfg_edge_count": metadata.get("cfg_edge_count", 0),
+        "feature_cache_hit": bool(metadata.get("cache_hit", False)),
+        "feature_warnings": list(metadata.get("warnings", [])),
         "confidence_score": float(class_probs.max().item()),
         "inference_time_seconds": elapsed,
         "checkpoint": str(config.checkpoint),
@@ -131,8 +172,15 @@ def format_terminal_report(result: dict[str, Any]) -> str:
             f"Malware Probability: {result['malware_probability']:.6f}",
             f"Malware/Benign Decision: {result['decision']}",
             f"Predicted Family: {result['predicted_family']}",
+            f"Executable Format: {result['executable_format']}",
             f"Input Architecture: {result['input_architecture']}",
+            f"Extracted API Tokens: {result['api_token_count']}",
+            f"Extracted Network Tokens: {result['network_token_count']}",
+            f"CFG Nodes/Edges: {result['cfg_node_count']}/{result['cfg_edge_count']}",
+            f"Feature Cache Hit: {result['feature_cache_hit']}",
             f"Confidence Score: {result['confidence_score']:.6f}",
             f"Inference Time: {result['inference_time_seconds']:.3f}s",
+            *([f"Feature Warnings: {len(result['feature_warnings'])}"] if result.get("feature_warnings") else []),
+            *[f"  - {warning}" for warning in result.get("feature_warnings", [])],
         ]
     )
