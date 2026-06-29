@@ -95,6 +95,39 @@ def run_inference(file_path: str | Path, config: SandboxConfig) -> dict[str, Any
     features = extract_modalities(file_path, arch=config.arch)
     model, checkpoint_meta = load_model(config, device)
     batch = make_model_batch(features, device)
+    print("\n========== SANDBOX SAMPLE ==========")
+
+    print("Binary")
+    print(" shape:", batch["binary_image"].shape)
+    print(" mean :", batch["binary_image"].float().mean().item())
+    print(" max  :", batch["binary_image"].float().max().item())
+
+    print("\nMemory")
+    print(" shape:", batch["memory_trace"].shape)
+    print(" mean :", batch["memory_trace"].float().mean().item())
+    print(" max  :", batch["memory_trace"].float().max().item())
+
+    print("\nAPI")
+    print(" shape:", batch["api_ids"].shape)
+    print(" nonzero:", (batch["api_ids"] != 0).sum().item())
+    print(" sum:", batch["api_ids"].sum().item())
+
+    print("\nNetwork")
+    print(" shape:", batch["network_ids"].shape)
+    print(" nonzero:", (batch["network_ids"] != 0).sum().item())
+    print(" sum:", batch["network_ids"].sum().item())
+
+    print("\nISR")
+    print(" shape:", batch["isr"].shape)
+    print(" sum:", batch["isr"].sum().item())
+
+    print("\nCFG")
+    print(" nodes:", batch["graph_x"].shape)
+    print(" edges:", batch["graph_edge_index"].shape)
+
+    print("\nArch:", batch["arch_id"].item())
+    print("===================================\n")
+
     try:
         outputs = model(batch)
     except Exception as exc:
