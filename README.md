@@ -46,8 +46,8 @@ A preprocessing pipeline (dataset loading through ISR generation) feeds Stage 1,
 ## Installation
 
 ```bash
-git clone https://github.com/<your-org>/x-nerf-plus-plus.git
-cd x-nerf-plus-plus
+git clone https://github.com/Mayukh27/xnerf git
+cd xnerf
 
 python -m venv .venv
 source .venv/bin/activate
@@ -65,24 +65,10 @@ python train.py \
   --data-dir /path/to/dataset \
   --output-dir checkpoints/
 ```
-
-**Inference (CLI)**
-
-```bash
-python cli_analyzer.py --input sample.bin --checkpoint checkpoints/xnerf_pp.pt
-```
-
 **Serve as an API**
 
 ```bash
 uvicorn service.app:app --host 0.0.0.0 --port 8000
-```
-
-**Docker**
-
-```bash
-docker build -t xnerf-plus-plus .
-docker run -p 8000:8000 xnerf-plus-plus
 ```
 
 ## Repository structure
