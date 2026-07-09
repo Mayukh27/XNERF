@@ -51,8 +51,8 @@ A preprocessing pipeline (dataset loading through ISR generation) feeds Stage 1,
 ## Installation
 
 ```bash
-git clone https://github.com/<your-org>/x-nerf-plus-plus.git
-cd x-nerf-plus-plus
+git clone https://github.com/Mayukh27/xnerf.git
+cd xnerf
 
 python -m venv .venv
 source .venv/bin/activate
