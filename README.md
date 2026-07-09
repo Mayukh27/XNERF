@@ -6,6 +6,11 @@
 
 *Unified multi-modal malware representation learning across CPU architectures*
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C.svg)](https://pytorch.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
+
 </div>
 
 ---
@@ -46,8 +51,8 @@ A preprocessing pipeline (dataset loading through ISR generation) feeds Stage 1,
 ## Installation
 
 ```bash
-git clone https://github.com/Mayukh27/xnerf git
-cd xnerf
+git clone https://github.com/<your-org>/x-nerf-plus-plus.git
+cd x-nerf-plus-plus
 
 python -m venv .venv
 source .venv/bin/activate
@@ -65,10 +70,24 @@ python train.py \
   --data-dir /path/to/dataset \
   --output-dir checkpoints/
 ```
+
+**Inference (CLI)**
+
+```bash
+python cli_analyzer.py --input sample.bin --checkpoint checkpoints/xnerf_pp.pt
+```
+
 **Serve as an API**
 
 ```bash
 uvicorn service.app:app --host 0.0.0.0 --port 8000
+```
+
+**Docker**
+
+```bash
+docker build -t xnerf-plus-plus .
+docker run -p 8000:8000 xnerf-plus-plus
 ```
 
 ## Repository structure
