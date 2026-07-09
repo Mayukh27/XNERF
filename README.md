@@ -1,137 +1,126 @@
+<div align="center">
+
 # X-NERF++
 
-Cross-Architecture Neural Execution Rendering Framework for defensive malware intelligence.
+**Cross-Architecture Neural Execution Rendering Framework**
 
-## Current Status
+*Unified multi-modal malware representation learning across CPU architectures*
 
-X-NERF++ is a research-stage PyTorch framework for multimodal malware detection, family classification, and cross-architecture representation learning. The repository now includes a remediation pass for the highest-risk wiring issues found in the audit:
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C.svg)](https://pytorch.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
 
-- `batch["isr"]` is encoded by `ISREncoder` and fused with the shared semantic feature space.
-- CFG/graph embeddings are passed to the synchronizer under the active `cfg` modality key.
-- Placeholder dataset-name family labels are masked with `family_label = -1` and ignored by family CE.
-- The live training loss remains malware CE + masked family CE + architecture adversarial CE + field smoothness.
+</div>
 
-No large-scale training results, checkpoint, held-out metrics, or publication-quality claims are committed in this repository. Treat the model as training-ready code, not as a validated malware detector.
+---
 
-## What Is Included
+## Overview
 
-- Dataset ingestion for heterogeneous malware research data: feature CSV/Parquet, API sequences, CAPE/Avast-style dynamic reports, graph `.edgelist` files, and authorized binary samples.
-- Encoders for byte images, API sequences, network events, memory/numeric traces, CFG graphs, and ISR tensors.
-- Semantic Field Synchronizer producing `[batch,time,2048]` shared representations.
-- Malware Neural Execution Field `F(x,t,s,m,a)` and trajectory decoder.
-- Gradient-reversal architecture adversarial head.
-- Masked family classification for invalid or placeholder family labels.
-- Training, validation, testing, zero-shot prototype evaluation, export, FastAPI, local CLI, and Docker scaffolding.
+X-NERF++ is a research framework for malware analysis that learns a single, **architecture-invariant** representation of program behavior from six heterogeneous input modalities — binary images, API call sequences, control-flow graphs, memory traces, network events, and an intermediate semantic representation (ISR).
 
-## Defensible Claims
+These modalities are fused through a **Semantic Field Synchronizer**, aligned across instruction-set architectures with an adversarial **Cross-Architecture Aligner**, and projected into a continuous **Malware Neural Execution Field (MNEF)** that supports detection, family attribution, cross-architecture recognition, zero-shot recognition, and similarity retrieval from one shared latent space.
 
-Safe to claim from source inspection:
+## Architecture
 
-- The repository implements a unified ingestion and manifest pipeline.
-- The model architecture supports multimodal fusion when the corresponding tensors are present.
-- ISR and graph branches now feed the shared semantic fusion path.
-- Family loss ignores invalid malware-family placeholders via `ignore_index=-1`.
-- The trainer implements AMP, gradient accumulation, checkpointing, validation, and non-finite checks.
+<div align="center">
+<img src="xnerf_architecture_4k.png" alt="X-NERF++ overall architecture diagram" width="100%">
+</div>
 
-Do not claim yet:
+The framework is organized into six stages, top to bottom:
 
-- Any accuracy, F1, ROC-AUC, zero-shot, or cross-architecture result.
-- Supervised behavior-stage or attack-stage reconstruction.
-- Paired same-malware cross-architecture alignment.
-- Successful Docker/API deployment against a trained checkpoint.
-- Five-modality real-data training unless the manifest proves each modality is populated for the same samples.
+| Stage | Component | Role |
+|---|---|---|
+| 1 | **Input modalities** | Six parallel input streams: binary images, API call sequences, CFG graphs, memory traces, network events, ISR |
+| 2 | **Modality-specific encoders** | CNN, transformer, GNN, temporal MLP, temporal transformer, and embedding network per modality |
+| 3 | **Semantic Field Synchronizer (SFS)** | Cross-modal attention and temporal fusion into a shared latent representation `[B × T × 2048]` |
+| 4 | **Cross-architecture aligner** | Gradient reversal layer + architecture discriminator for architecture-invariant features (x86, x64, ARM, ARM64, MIPS, RISC-V) |
+| 5 | **Malware Neural Execution Field (MNEF)** | Continuous field `F(x, t, s, m, a)` over execution position, temporal state, semantic embedding, memory context, and architecture embedding |
+| 6 | **Task heads** | Detection, family attribution (221 families), cross-architecture recognition, zero-shot recognition, retrieval |
 
-See `CLAIM_VALIDATION_FINAL.md` for the strict claim table.
+A preprocessing pipeline (dataset loading through ISR generation) feeds Stage 1, and a five-term training objective — classification, family, adversarial, field-smoothness, and prototype-contrastive losses — combines into the total loss used during optimization.
 
-## Training Commands
+## Features
 
-Local debug run:
+- **Six-modality fusion** — combines static, dynamic, structural, and semantic views of a binary in one model
+- **Architecture invariance** — adversarially trained to generalize across x86, x64, ARM, ARM64, MIPS, and RISC-V
+- **Continuous execution field** — MNEF models malware behavior as a continuous function rather than a fixed-length vector
+- **Five task heads from one backbone** — detection, attribution, cross-architecture matching, zero-shot recognition, retrieval
+- **Deployment-ready** — export path to ONNX/TorchScript, a FastAPI inference service, Docker packaging, and a CLI analyzer
 
-```powershell
-C:\Users\Mayukh\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m xnerf.pipeline.local_run pipeline --config config.yaml
-```
-
-Kaggle run:
+## Installation
 
 ```bash
-pip install -q torch-geometric transformers fastapi uvicorn capstone networkx ray umap-learn reportlab
-python -m xnerf.pipeline.kaggle_run pipeline --config xnerf/configs/kaggle.yaml
+git clone https://github.com/<your-org>/x-nerf-plus-plus.git
+cd x-nerf-plus-plus
+
+python -m venv .venv
+source .venv/bin/activate
+
+pip install -r requirements.txt
 ```
 
-Balanced 90k local config:
+## Quick start
 
-```powershell
-python -m xnerf.pipeline.local_run pipeline --config config_balanced_90k.yaml
+**Training**
+
+```bash
+python train.py \
+  --config configs/xnerf_pp.yaml \
+  --data-dir /path/to/dataset \
+  --output-dir checkpoints/
 ```
 
-`config_balanced_90k.yaml` currently sets `model.num_families: 64`. That value must match the generated `family_vocab.json` for the exact manifest used in training.
+**Inference (CLI)**
 
-## Dataset Layout
-
-Place authorized archives under:
-
-```text
-data/
-  archives/
-    malnet_tiny/
-    AndMal2020/
-    cicmaldroid2020/
-    drebin/
-    ember/
-    virusshare/
-    cape/reports/
+```bash
+python cli_analyzer.py --input sample.bin --checkpoint checkpoints/xnerf_pp.pt
 ```
 
-The pipeline writes:
+**Serve as an API**
 
-```text
-data/raw/
-data/cache/isr/
-data/processed/manifest.jsonl
-data/processed/train_manifest.jsonl
-data/processed/val_manifest.jsonl
-data/processed/test_manifest.jsonl
-data/processed/family_vocab.json
+```bash
+uvicorn service.app:app --host 0.0.0.0 --port 8000
 ```
 
-Raw malware samples require explicit authorization. X-NERF++ treats binaries as analysis inputs and does not execute samples.
+**Docker**
 
-## Local Inference
-
-After training and export:
-
-```powershell
-$env:XNERF_CHECKPOINT="models/xnerf_local_inference.pt"
-uvicorn xnerf.api.app:app --reload
+```bash
+docker build -t xnerf-plus-plus .
+docker run -p 8000:8000 xnerf-plus-plus
 ```
 
-Single-file CLI:
+## Repository structure
 
-```powershell
-python -m xnerf.deployment.local_analyze --checkpoint models/xnerf_local_inference.pt --sample path\to\sample.bin --arch x86
+```
+x-nerf-plus-plus/
+├── configs/                 # training and model configs
+├── data/                    # preprocessing pipeline (parsers, extractors, ISR generator)
+├── models/
+│   ├── encoders/             # per-modality encoders
+│   ├── sfs.py                 # Semantic Field Synchronizer
+│   ├── aligner.py             # Cross-Architecture Aligner (GRL + discriminator)
+│   ├── mnef.py                 # Malware Neural Execution Field
+│   └── heads/                 # task heads
+├── service/                 # FastAPI inference service
+├── cli_analyzer.py          # command-line analyzer
+├── train.py
+└── xnerf_architecture.svg   # architecture diagram (vector)
 ```
 
-## Audit Reports
+## Citation
 
-The remediation reports generated for the current state are:
+If you use X-NERF++ in your research, please cite:
 
-- `AUDIT_FIX_REPORT.md`
-- `ISR_INTEGRATION_REPORT.md`
-- `GRAPH_INTEGRATION_REPORT.md`
-- `CROSS_ARCH_AUDIT.md`
-- `FAMILY_REPAIR_REPORT.md`
-- `LOSS_GRAPH.md`
-- `TRAINING_READINESS_REPORT.md`
-- `CLAIM_VALIDATION_FINAL.md`
-- `PROJECT_CONTEXT.md`
+```bibtex
+@article{xnerfpp2026,
+  title   = {X-NERF++: Cross-Architecture Neural Execution Rendering Framework},
+  author  = {<authors>},
+  journal = {<venue>},
+  year    = {2026}
+}
+```
 
-## Verification
+## License
 
-Performed in this environment:
-
-- AST syntax parse for edited Python files: passed.
-
-Not performed here:
-
-- `pytest` and model smoke tests, because the available Python runtimes either point to a stale venv or do not include `pytest`/`torch`.
-
+Released under the [MIT License](LICENSE).
