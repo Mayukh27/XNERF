@@ -1,6 +1,6 @@
 <div align="center">
 
-# X-NERF++
+# XNERF
 
 **Cross-Architecture Neural Execution Rendering Framework**
 
@@ -24,7 +24,7 @@
 
 ## Overview
 
-X-NERF++ is a research framework for malware analysis that learns a single, **architecture-invariant** representation of program behavior from six heterogeneous input modalities — binary images, API call sequences, control-flow graphs, memory traces, network events, and an intermediate semantic representation (ISR).
+XNERF++ is a research framework for malware analysis that learns a single, **architecture-invariant** representation of program behavior from six heterogeneous input modalities — binary images, API call sequences, control-flow graphs, memory traces, network events, and an intermediate semantic representation (ISR).
 
 These modalities are fused through a **Semantic Field Synchronizer**, aligned across instruction-set architectures with an adversarial **Cross-Architecture Aligner**, and projected into a continuous **Malware Neural Execution Field (MNEF)** that supports detection, family attribution, cross-architecture recognition, zero-shot recognition, and similarity retrieval from one shared latent space.
 
@@ -32,10 +32,10 @@ These modalities are fused through a **Semantic Field Synchronizer**, aligned ac
 
 <div align="center">
 
-## 🏗️ X-NERF++ Overall Framework
+## 🏗️ XNERF  Framework
 
-<img src="./xnerf_architecture_4k.png"
-     alt="X-NERF++ Overall Architecture"
+<img src="./assets/architecture.png"
+     alt="X-NERF++ Architecture"
      width="100%"/>
 
 <br>
