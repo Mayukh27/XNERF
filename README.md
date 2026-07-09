@@ -6,11 +6,6 @@
 
 *Unified multi-modal malware representation learning across CPU architectures*
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C.svg)](https://pytorch.org/)
-[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
-
 </div>
 
 ---
