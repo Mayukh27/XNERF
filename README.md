@@ -31,9 +31,18 @@ These modalities are fused through a **Semantic Field Synchronizer**, aligned ac
 ## Architecture
 
 <div align="center">
-<img src="xnerf_architecture_4k.png" alt="X-NERF++ overall architecture diagram" width="100%">
-</div>
 
+## 🏗️ X-NERF++ Overall Framework
+
+<img src="./xnerf_architecture_4k.png"
+     alt="X-NERF++ Overall Architecture"
+     width="100%"/>
+
+<br>
+
+<b>Figure 1.</b> Overall architecture of <b>X-NERF++</b>. Multi-modal malware representations are encoded independently, synchronized through the Semantic Field Synchronizer (SFS), aligned across CPU architectures using adversarial learning, projected into the Malware Neural Execution Field (MNEF), and optimized for multiple downstream malware analysis tasks.
+
+</div>
 The framework is organized into six stages, top to bottom:
 
 | Stage | Component | Role |
