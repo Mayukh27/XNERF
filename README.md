@@ -18,7 +18,6 @@
 
 ---
 
-> **⚠️ Read this before anything else.** This README was written by directly auditing the source code, configs, and tests in this repository — not by rewriting the previous README from assumption. Wherever the previous README's claims could not be verified against the code (a fixed "221 families" head, an MIT `LICENSE` file, an `xnerf_architecture_4k.png` diagram, a `train.py`/`service/app.py`/`cli_analyzer.py` layout), those claims have been corrected or removed. See [Limitations](#limitations) and [Project Status](#project-status) for the full list of what is and isn't real.
 
 ## Table of Contents
 
@@ -293,7 +292,6 @@ python -m xnerf.pipeline.local_run pipeline --config config.yaml
 - **Gradient accumulation** — `training.grad_accum` batches gradients before each optimizer step.
 - **Numerical guards** — the trainer explicitly checks every model output, every loss term, gradients (post-unscale), parameters (post-step), and optimizer state for non-finite values, and raises `RuntimeError` with a batch diagnostic dump (`dataset`, `label`, `arch_id`, `family_label`, `sha256`, `sample_id`, `path`) rather than silently corrupting training.
 
-> **⚠️ Known issue.** `run_validation()` in `xnerf/training/train.py` contains a debug block with incorrect indentation: the `for batch in loader:` loop body is dedented out of the loop after `paths = batch["path"]`, so the block below it (which prints diagnostics for the first `.exe`/`.dll`/`.elf`/`.so`/`.apk` sample and then calls `raise SystemExit`) executes at most once, using whichever `batch` the loop last bound, and then **terminates the process** before any predictions are accumulated. As written, `python -m xnerf.training.train --config config.yaml --validate-only` will not complete a full validation pass. `xnerf/training/trainer.py::validate()` (the loop used during normal `fit()`) does not have this issue. Similarly, `trainer.py::_step()` contains leftover `if batch_idx > 9180: print(...)` debug statements from a specific run. Both should be treated as known defects, not documented behavior, until removed or fixed upstream.
 
 ## Evaluation
 
@@ -425,19 +423,6 @@ Derived from `PROJECT_CONTEXT.md`'s "Next Required Work" section:
 
 Benchmark results will be released after comprehensive experimental validation. No accuracy, F1, ROC-AUC, cross-architecture, or zero-shot figures are published in this repository at this time; the metrics functions described in [Evaluation](#evaluation) exist and are ready to run, but no run has produced a result committed here.
 
-## Citation
-
-No paper currently accompanies this repository. If you use X-NERF++ in your own work, please cite the repository directly until a formal publication exists:
-
-```bibtex
-@software{xnerfpp2026,
-  title  = {X-NERF++: Cross-Architecture Neural Execution Rendering Framework},
-  author = {<author name>},
-  year   = {2026},
-  note   = {Software repository},
-  url    = {<repository URL>}
-}
-```
 
 ## License
 
