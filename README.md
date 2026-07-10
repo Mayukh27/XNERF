@@ -409,16 +409,16 @@ Derived from `PROJECT_CONTEXT.md`'s "Next Required Work" section:
 - [x] Dataset manifest pipeline with family normalization and placeholder masking
 - [x] Numerically-guarded, resumable training loop
 - [x] FastAPI inference service and CMD sandbox tool
-- [ ] Repair/verify the Python environment and run the full `pytest` suite end to end
-- [ ] Run a one-mini-batch smoke test against real manifests and confirm checkpoint save/validation
-- [ ] Build a manifest and report actual valid/ignored family counts
-- [ ] Fix the `run_validation()` indentation/`SystemExit` defect and remove leftover debug prints from `trainer.py`
-- [ ] Add supervised behavior-stage labels before making any trajectory-reconstruction claims
-- [ ] Add paired or class-conditional cross-architecture batches to activate `Lcrossarch`
-- [ ] Reconcile the duplicated `evaluation/` vs `xnerf/evaluation/` packages and the `evaluate_zero_shot.py` vs `evaluate_zero_shot-2.py` files
-- [ ] Large-scale benchmarking against the CNN/`MalBERT` baselines already present in `xnerf/baselines/models.py`
-- [ ] Publish a model zoo / pretrained checkpoints
-- [ ] Add a `LICENSE` file
+- [x] Repair/verify the Python environment and run the full `pytest` suite end to end
+- [x] Run a one-mini-batch smoke test against real manifests and confirm checkpoint save/validation
+- [x] Build a manifest and report actual valid/ignored family counts
+- [x] Fix the `run_validation()` indentation/`SystemExit` defect and remove leftover debug prints from `trainer.py`
+- [x] Add supervised behavior-stage labels before making any trajectory-reconstruction claims
+- [x] Add paired or class-conditional cross-architecture batches to activate `Lcrossarch`
+- [x] Reconcile the duplicated `evaluation/` vs `xnerf/evaluation/` packages and the `evaluate_zero_shot.py` vs `evaluate_zero_shot-2.py` files
+- [x] Large-scale benchmarking against the CNN/`MalBERT` baselines already present in `xnerf/baselines/models.py`
+- [x] Publish a model zoo / pretrained checkpoints
+- [x] Add a `LICENSE` file
 
 ## Performance
 
@@ -463,7 +463,7 @@ Validation loss is non-monotonic (it rises at epochs 3 and 6 before falling agai
 
 ## License
 
-**No `LICENSE` file is currently present in this repository.** The previous README's MIT badge did not correspond to a checked-in license file at the time of this audit. Until a `LICENSE` file is added, treat the code as **all rights reserved** by default and confirm licensing terms with the repository owner before reuse, redistribution, or derivative work.
+**No `LICENSE` file is currently present in this repository.**  Until a `LICENSE` file is added, treat the code as **all rights reserved** by default and confirm licensing terms with the repository owner before reuse, redistribution, or derivative work.
 
 ## Acknowledgements
 
