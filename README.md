@@ -36,7 +36,6 @@
 - [Model Components](#model-components)
 - [Research Contributions](#research-contributions)
 - [Project Status](#project-status)
-- [Limitations](#limitations)
 - [Roadmap](#roadmap)
 - [Performance](#performance)
 - [Citation](#citation)
