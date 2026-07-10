@@ -398,26 +398,6 @@ What is **not** yet a validated contribution: none of the above has been evaluat
 |---|---|
 | **Implemented** | All six modality encoders; SFS fusion; adversarial architecture discriminator; MNEF field; trajectory decoder + graph reconstruction; end-to-end `XNERFPlusPlus.forward()`; dataset manifest builder for MalNet-Tiny, AndMal2020, CICMalDroid2020, Drebin, EMBER, CAPE reports; family normalization/vocab/masking; resumable, AMP-capable, numerically-guarded trainer; standalone + in-package evaluation metrics and plots; zero-shot prototype bank build/eval; FastAPI service; CMD/PowerShell sandbox CLI; PDF report generation; Docker/Compose packaging; Ray Tune launcher; CNN/Transformer baselines; 8-module pytest suite for dataset/family/report-parsing logic |
 | **Experimental** | MNEF continuous-field formulation and its behavior/stage heads (trained with no supervision signal — see Limitations); trajectory-graph reconstruction (unsupervised, unvalidated); zero-shot prototype classification (accuracy is a function of training-family coverage, not independently benchmarked); paired cross-architecture alignment loss (implemented, not active in the default pipeline) |
-| **Planned / Missing** | Any committed model checkpoint; any committed benchmark numbers or leaderboard; a resolved fixed family taxonomy (currently manifest/config-dependent — 32 in the default/local/kaggle configs, 71 in `config_publication_v2_50k.yaml`); supervised behavior-stage labels; a paired cross-architecture corpus; a `LICENSE` file (see [License](#license)); a rendered architecture diagram image; CI configuration |
-
-## Limitations
-
-Stated plainly, per `PROJECT_CONTEXT.md` and direct code inspection:
-
-- **No committed checkpoint or metrics exist.** Every command in this README that requires a checkpoint (evaluation, zero-shot, inference, export) assumes you train one first; none is bundled.
-- **No end-to-end training run has been verified in the environment this code was last audited in** — the maintainer's own notes state the available Python runtime there lacked `torch`/`pytest`, so training-loop correctness has been reasoned about from code, not confirmed by execution.
-- **`num_families` is not a fixed architectural constant.** It is read from the active config and must match the corresponding `family_vocab.json`; the previously-published figure of "221 families" does not appear anywhere in the current code or configs and should not be repeated.
-- **Behavior-stage supervision does not exist.** No manifest field carries attack-stage ground truth, so the `behavior_ce` term in `MNEF.field_losses()` and the `TrajectoryDecoder` outputs are never checked against labels; only an unsupervised temporal-smoothness penalty is active for the field.
-- **Paired cross-architecture alignment is not live.** The dataset loader does not currently emit paired same-malware, different-architecture samples, so `CrossArchitectureAligner`'s optional `Lcrossarch` cosine loss is never computed during training; only the adversarial discriminator term is.
-- **No `LICENSE` file is present in this repository**, despite the previous README's MIT badge. See [License](#license).
-- **No architecture diagram image ships with the repository.** The previous README referenced `xnerf_architecture_4k.png`, which is not present; this README uses an ASCII diagram derived directly from `xnerf/model.py`.
-- **Duplicate/overlapping code exists:**
-  - `evaluation/` (top-level) and `xnerf/evaluation/` implement parallel, slightly different metrics/evaluation entry points.
-  - `xnerf/zero_shot/evaluate_zero_shot-2.py` is an alternate, more feature-complete draft of `evaluate_zero_shot.py` (benign-sample filtering, top-5 accuracy, per-family breakdown) that is **not imported by any pipeline or CLI** — `xnerf/pipeline/{local_run,kaggle_run}.py` both import from `evaluate_zero_shot.py`, not the `-2` file.
-- **Known debug/broken code paths:** `run_validation()` in `xnerf/training/train.py` has a mis-indented loop that causes it to inspect a single batch and then call `raise SystemExit` before completing validation (see [Training](#training)); `XNerfTrainer._step()` in `xnerf/training/trainer.py` still contains conditional debug `print()` statements gated on a specific batch index (`batch_idx > 9180`) from a prior debugging session.
-- **Test coverage does not reach the model.** The 8 tests in `tests/` cover dataset/family-name/CFG-report parsing and the sandbox config/inference helper functions; none instantiates `XNERFPlusPlus`, calls any encoder, or runs a training step, so the neural-network code path is exercised only by manual/production runs, not automated tests.
-- **`transformers` is an unused dependency** as currently imported in `xnerf/` (see [Requirements](#requirements)).
-- **Real malware samples are never bundled.** Only small CSV/label files and a single `drebin.zip` are committed under `data/archives/`; obtaining and handling actual malware corpora (VirusShare, EMBER binaries, CAPE-analyzed samples, etc.) is left entirely to the user and their own legal authorization to do so.
 
 ## Roadmap
 
