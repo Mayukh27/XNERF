@@ -18,6 +18,7 @@
 
 ---
 
+> **⚠️ Read this before anything else.** This README was written by directly auditing the source code, configs, and tests in this repository — not by rewriting the previous README from assumption. Wherever the previous README's claims could not be verified against the code (a fixed "221 families" head, an MIT `LICENSE` file, an `xnerf_architecture_4k.png` diagram, a `train.py`/`service/app.py`/`cli_analyzer.py` layout), those claims have been corrected or removed. See [Limitations](#limitations) and [Project Status](#project-status) for the full list of what is and isn't real.
 
 ## Table of Contents
 
@@ -292,6 +293,7 @@ python -m xnerf.pipeline.local_run pipeline --config config.yaml
 - **Gradient accumulation** — `training.grad_accum` batches gradients before each optimizer step.
 - **Numerical guards** — the trainer explicitly checks every model output, every loss term, gradients (post-unscale), parameters (post-step), and optimizer state for non-finite values, and raises `RuntimeError` with a batch diagnostic dump (`dataset`, `label`, `arch_id`, `family_label`, `sha256`, `sample_id`, `path`) rather than silently corrupting training.
 
+> **⚠️ Known issue.** `run_validation()` in `xnerf/training/train.py` contains a debug block with incorrect indentation: the `for batch in loader:` loop body is dedented out of the loop after `paths = batch["path"]`, so the block below it (which prints diagnostics for the first `.exe`/`.dll`/`.elf`/`.so`/`.apk` sample and then calls `raise SystemExit`) executes at most once, using whichever `batch` the loop last bound, and then **terminates the process** before any predictions are accumulated. As written, `python -m xnerf.training.train --config config.yaml --validate-only` will not complete a full validation pass. `xnerf/training/trainer.py::validate()` (the loop used during normal `fit()`) does not have this issue. Similarly, `trainer.py::_step()` contains leftover `if batch_idx > 9180: print(...)` debug statements from a specific run. Both should be treated as known defects, not documented behavior, until removed or fixed upstream.
 
 ## Evaluation
 
@@ -421,8 +423,44 @@ Derived from `PROJECT_CONTEXT.md`'s "Next Required Work" section:
 
 ## Performance
 
-Benchmark results will be released after comprehensive experimental validation. No accuracy, F1, ROC-AUC, cross-architecture, or zero-shot figures are published in this repository at this time; the metrics functions described in [Evaluation](#evaluation) exist and are ready to run, but no run has produced a result committed here.
+The following results come from a training/evaluation run supplied alongside this repository (`train_metrics.json`- and `metrics.json`-shaped output, matching the structures produced by `xnerf/training/train.py::run_training()` and `xnerf/evaluation/evaluate.py` / `evaluation/metrics.py`, respectively). No checkpoint, manifest, or run configuration was provided with these numbers, so the dataset composition, split sizes, `num_families` value, and hyperparameters behind this run are unknown and cannot be verified from the repository alone — treat this as a single reported run, not a reproducible, peer-reviewed benchmark.
 
+**Test-set classification metrics:**
+
+| Metric | Value |
+|---|---|
+| Accuracy | 0.932 |
+| Precision (weighted) | 0.932 |
+| Recall (weighted) | 0.932 |
+| F1 (weighted) | 0.932 |
+| ROC-AUC | 0.982 |
+| Architecture-conditioned malware accuracy | 0.917 |
+| Cross-architecture accuracy | 0.917 |
+
+**Per-architecture accuracy:**
+
+| Architecture | Accuracy |
+|---|---|
+| x86 | 0.911 |
+| ARM | 0.936 |
+| MIPS | 0.915 |
+
+> Only x86, ARM, and MIPS appear in this run's `per_architecture_accuracy` breakdown; x64, ARM64, and RISC-V are either absent from the evaluated manifest or had no rows with a known (non-`unknown`) architecture label. No family-attribution or zero-shot accuracy figures were included in this run's output.
+
+**Training curve** (`best_val_loss = 0.4368`, logged through epoch 8):
+
+| Epoch | Train Loss | Val Loss |
+|---|---|---|
+| 1 | 0.791 | 0.647 |
+| 2 | 0.611 | 0.581 |
+| 3 | 0.514 | 0.603 |
+| 4 | 0.480 | 0.475 |
+| 5 | 0.465 | 0.453 |
+| 6 | 0.456 | 0.522 |
+| 7 | 0.446 | 0.438 |
+| 8 | 0.438 | **0.437** |
+
+Validation loss is non-monotonic (it rises at epochs 3 and 6 before falling again), consistent with the trainer's patience-based early-stopping logic in `xnerf/training/trainer.py` rather than smooth convergence. As noted above, no checkpoint file, prediction dump, or run configuration accompanies these numbers, so they should be reproduced independently (via the commands in [Training](#training) and [Evaluation](#evaluation)) before being relied on.
 
 ## License
 
