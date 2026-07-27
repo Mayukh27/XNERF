@@ -1,0 +1,174 @@
+X-NERF++ BASELINE TRAINING AND TESTING GUIDE
+============================================
+
+This folder is at the repository root:
+
+  D:\GITrepos\XNERF\baselines
+
+The baseline code is implemented here:
+
+  D:\GITrepos\XNERF\xnerf\baselines\train_eval.py
+  D:\GITrepos\XNERF\xnerf\baselines\summarize_results.py
+
+
+STEP 1 - Open terminal in the project root
+------------------------------------------
+
+Run all commands from:
+
+  D:\GITrepos\XNERF
+
+PowerShell:
+
+  cd D:\GITrepos\XNERF
+
+
+STEP 2 - Make sure the same dataset split is used
+-------------------------------------------------
+
+The baseline runner uses these manifests by default:
+
+  data\processed\train_publication_v2_50k.jsonl
+  data\processed\val_publication_v2_50k.jsonl
+  data\processed\test_publication_v2_50k.jsonl
+
+These must be the same train/validation/test files used for X-NERF++.
+Do not compare baselines trained on another dataset split.
+
+
+STEP 3 - Train and test EMBER RF first
+--------------------------------------
+
+This is the first baseline to run because it is fast and strong.
+
+PowerShell:
+
+  python -m xnerf.baselines.train_eval `
+    --baseline ember-rf `
+    --seed 42 `
+    --out-dir runs\baselines\ember-rf\seed_42
+
+Expected outputs:
+
+  runs\baselines\ember-rf\seed_42\model.pkl
+  runs\baselines\ember-rf\seed_42\metrics.json
+
+
+STEP 4 - Train and test MalConv
+-------------------------------
+
+MalConv is the raw-byte CNN baseline.
+
+PowerShell:
+
+  python -m xnerf.baselines.train_eval `
+    --baseline malconv `
+    --seed 42 `
+    --batch-size 16 `
+    --epochs 5 `
+    --out-dir runs\baselines\malconv\seed_42
+
+
+STEP 5 - Train and test MalBERT
+-------------------------------
+
+MalBERT is the API-sequence Transformer baseline.
+
+PowerShell:
+
+  python -m xnerf.baselines.train_eval `
+    --baseline malbert `
+    --seed 42 `
+    --batch-size 16 `
+    --epochs 5 `
+    --out-dir runs\baselines\malbert\seed_42
+
+
+STEP 6 - Train and test HYDRA-style fusion
+------------------------------------------
+
+This baseline combines binary-image and API-sequence inputs.
+If this is not the exact official HYDRA implementation, call it
+"HYDRA-style static-dynamic fusion" in the paper.
+
+PowerShell:
+
+  python -m xnerf.baselines.train_eval `
+    --baseline hydra `
+    --seed 42 `
+    --batch-size 8 `
+    --epochs 5 `
+    --out-dir runs\baselines\hydra\seed_42
+
+
+STEP 7 - Train and test GNN Malware
+-----------------------------------
+
+This is the CFG graph-only baseline.
+
+PowerShell:
+
+  python -m xnerf.baselines.train_eval `
+    --baseline gnn-malware `
+    --seed 42 `
+    --batch-size 8 `
+    --epochs 5 `
+    --out-dir runs\baselines\gnn-malware\seed_42
+
+
+STEP 8 - Run three seeds for paper results
+------------------------------------------
+
+For publication, run every baseline with at least three seeds.
+
+Example for EMBER RF:
+
+  python -m xnerf.baselines.train_eval --baseline ember-rf --seed 42
+  python -m xnerf.baselines.train_eval --baseline ember-rf --seed 123
+  python -m xnerf.baselines.train_eval --baseline ember-rf --seed 2026
+
+Repeat the same for:
+
+  malconv
+  malbert
+  hydra
+  gnn-malware
+
+
+STEP 9 - Generate the comparison table
+--------------------------------------
+
+After all baseline runs finish:
+
+  python -m xnerf.baselines.summarize_results `
+    --root runs\baselines `
+    --out runs\baselines\summary.json
+
+This prints a LaTeX table and saves:
+
+  runs\baselines\summary.json
+
+
+STEP 10 - Use only real generated numbers in the paper
+------------------------------------------------------
+
+Use the values from each metrics.json file.
+
+Do not manually invent or copy baseline numbers into the paper.
+If a value is copied from another paper, mark it clearly as an external
+reported result and do not claim it was trained on your split.
+
+
+STEP 11 - What to write in the paper
+------------------------------------
+
+Use this text:
+
+For fair comparison, all baselines were trained and evaluated on the same
+deterministic train/validation/test split as X-NERF++. Static baselines use
+raw bytes or cached tabular PE/dynamic features, dynamic baselines use API-call
+sequences, graph baselines use CFG-derived graph representations, and hybrid
+baselines combine static and dynamic modalities. All methods are evaluated on
+the same held-out test set using Accuracy, Precision, Recall, F1, ROC-AUC,
+cross-architecture accuracy, and per-architecture accuracy.
+
