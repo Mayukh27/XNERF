@@ -14,14 +14,14 @@ def classification_losses(outputs: dict[str, torch.Tensor], batch: dict[str, tor
             losses["family_ce"] = outputs["family_logits"].sum() * 0.0
 
     if "arch_id" in batch and "arch_logits" in outputs:
-         arch_id = batch["arch_id"]
-         unknown_id = 0  # ARCH_TO_ID["unknown"]
-         valid_mask = arch_id != unknown_id
+        arch_id = batch["arch_id"]
+        unknown_id = 0  # ARCH_TO_ID["unknown"]
+        valid_mask = arch_id != unknown_id
 
-    if torch.any(valid_mask):
-        losses["arch_adv"] = (  F.cross_entropy( outputs["arch_logits"][valid_mask],  arch_id[valid_mask] ) * 0.1)
+        if torch.any(valid_mask):
+            losses["arch_adv"] = F.cross_entropy(outputs["arch_logits"][valid_mask], arch_id[valid_mask]) * 0.1
 
-    if outputs["field"].shape[1] > 1:
+    if "field" in outputs and outputs["field"].shape[1] > 1:
         losses["field_smooth"] = (outputs["field"][:, 1:] - outputs["field"][:, :-1]).pow(2).mean() * 0.01
         
     return losses

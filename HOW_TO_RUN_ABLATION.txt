@@ -1,0 +1,190 @@
+X-NERF ABLATION STUDY GUIDE
+===========================
+
+Run all commands from the repository root:
+
+  cd D:\GITrepos\XNERF
+
+The ablation runner is implemented here:
+
+  xnerf\evaluation\ablation.py
+
+It trains and evaluates separate X-NERF variants by disabling exactly one
+component at a time. Do not manually enter fake values in the paper; use the
+generated metrics files and summary table.
+
+
+STEP 1 - Confirm required data exists
+-------------------------------------
+
+The ablation runner uses the publication config:
+
+  config_publication_v2_50k.yaml
+
+That config expects:
+
+  data\processed\train_publication_v2_50k.jsonl
+  data\processed\val_publication_v2_50k.jsonl
+  data\processed\test_publication_v2_50k.jsonl
+
+The corresponding cached multimodal features must also exist.
+
+
+STEP 2 - Run the full baseline once
+----------------------------------
+
+If the full model has not already been trained and evaluated through the
+ablation runner, run:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --variants full --official-checkpoint checkpoints_publication_v2_50k\best.pt
+
+If the full model is already done, skip this step.
+
+The Full X-NERF ablation row must use the same checkpoint and configured test
+manifest as the official test evaluation. The runner deliberately does not
+apply the ablation --batch-size or --num-workers overrides to the full row, so
+the dataloader settings remain identical to the main config unless the config
+itself is changed.
+
+
+STEP 3 - Run each ablation separately
+-------------------------------------
+
+Run one component ablation at a time. This is safer on a 4 GB GPU and makes it
+easy to resume if one run fails.
+
+Binary Encoder ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_binary
+
+API Encoder ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_api
+
+CFG Encoder ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_cfg
+
+Memory Encoder ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_memory
+
+Network Encoder ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_network
+
+ISR Encoder ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_isr
+
+Semantic Field Synchronizer ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_sfs
+
+Gradient Reversal Layer ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_grl
+
+MNEF ablation:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_mnef
+
+
+STEP 4 - Regenerate the combined CSV and IEEE table
+---------------------------------------------------
+
+After all variant checkpoints exist, regenerate the combined outputs without
+retraining:
+
+  python -m xnerf.evaluation.ablation   --config config_publication_v2_50k.yaml --out runs\ablation  --skip-train  --official-checkpoint checkpoints_publication_v2_50k\best.pt  --official-out runs\publication_test  --num-workers 0  --batch-size 1
+
+This reads the existing checkpoints and writes:
+
+  runs\ablation\ablation_results.json
+  runs\ablation\ablation_results.csv
+  runs\ablation\ablation_table.tex
+  runs\ablation\full_vs_official_comparison.json
+
+Each variant also has:
+
+  runs\ablation\<variant>\config.yaml
+  runs\ablation\<variant>\checkpoints\best.pt
+  runs\ablation\<variant>\test\metrics.json
+  runs\ablation\<variant>\test\predictions.npz
+
+
+STEP 5 - Metrics reported
+-------------------------
+
+The CSV and LaTeX table are generated from measured predictions and report:
+
+  Detection Accuracy
+  Detection Precision
+  Detection Recall
+  Detection F1
+  ROC-AUC
+  Family Top-1 Accuracy
+  Family Top-5 Accuracy
+  Cross-Architecture Accuracy
+
+The LaTeX table keeps Full X-NERF as the baseline and adds Delta F1 for compact
+IEEE reporting.
+
+
+STEP 6 - Baseline family and cross-architecture comparison commands
+-------------------------------------------------------------------
+
+These commands produce measured Top-1/Top-5 family attribution metrics for the
+requested neural baselines on the same publication manifests.
+
+MalBERT:
+
+  python -m xnerf.baselines.train_eval --baseline malbert --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\malbert\seed_42 --num-workers 0 --batch-size 1
+
+HYDRA:
+
+  python -m xnerf.baselines.train_eval --baseline hydra --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\hydra\seed_42 --num-workers 0 --batch-size 1
+
+GNN Malware:
+
+  python -m xnerf.baselines.train_eval --baseline gnn-malware --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\gnn-malware\seed_42 --num-workers 0 --batch-size 1
+
+SAFE cross-architecture baseline:
+
+  python -m xnerf.baselines.train_eval --baseline safe --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\safe\seed_42 --num-workers 0 --batch-size 1
+
+Without-alignment X-NERF comparison:
+
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_grl
+
+After those runs finish, generate the publication tables:
+
+  python -m xnerf.baselines.generate_paper_artifacts --root runs\baselines --out-dir reports\baseline_artifacts --xnerf-metrics runs\publication_test\test_metrics.json --no-alignment-metrics runs\ablation\no_grl\test\metrics.json
+
+This writes:
+
+  reports\baseline_artifacts\tables\family_topk_table.csv
+  reports\baseline_artifacts\tables\family_topk_table.tex
+  reports\baseline_artifacts\tables\cross_architecture_table.csv
+  reports\baseline_artifacts\tables\cross_architecture_table.tex
+
+
+Windows / 4 GB GPU notes
+------------------------
+
+Keep:
+
+  --num-workers 0
+
+This avoids PyTorch Windows shared-memory failures such as:
+
+  Couldn't open shared file mapping
+  error code: 1455
+
+Keep:
+
+  --batch-size 1
+
+This avoids CUDA OOM on 4 GB GPUs. The runner automatically increases gradient
+accumulation to preserve the original effective batch size unless --grad-accum
+is provided explicitly.

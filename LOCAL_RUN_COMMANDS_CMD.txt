@@ -179,7 +179,90 @@ Test directly:
   python -m xnerf.evaluation.test_after_training --config config.yaml --out runs/test
 
 
-8) Useful checks for extracted new datasets
+8) Generate evaluation results and graphs
+
+Generate final test metrics and prediction artifacts for the main model:
+  python -m xnerf.evaluation.test_after_training --config config_publication_v2_50k.yaml --checkpoint checkpoints_publication_v2_50k\best.pt --out runs\publication_test
+
+Expected main-model outputs:
+  runs\publication_test\test_metrics.json
+  runs\publication_test\test_predictions.npz
+  runs\publication_test\confusion_matrix.png
+  runs\publication_test\tsne.png
+  runs\publication_test\umap.png
+
+Generate main-model metrics/images from an existing prediction file without retesting:
+  python -m xnerf.evaluation.evaluate --predictions runs\publication_test\test_predictions.npz --out reports\xnerf_artifacts
+
+Expected no-retest artifact outputs:
+  reports\xnerf_artifacts\metrics.json
+  reports\xnerf_artifacts\confusion_matrix.png
+  reports\xnerf_artifacts\tsne.png
+  reports\xnerf_artifacts\umap.png
+
+Generate baseline comparison graphs and confusion matrices:
+  python -m xnerf.baselines.generate_paper_artifacts --root runs\baselines --out-dir reports\baseline_artifacts --xnerf-metrics runs\publication_test\test_metrics.json --no-alignment-metrics runs\ablation\no_grl\test\metrics.json
+
+Expected baseline graph outputs:
+  reports\baseline_artifacts\paper_artifacts.json
+  reports\baseline_artifacts\metric_plots\baseline_accuracy.png
+  reports\baseline_artifacts\metric_plots\baseline_accuracy.pdf
+  reports\baseline_artifacts\metric_plots\baseline_precision.png
+  reports\baseline_artifacts\metric_plots\baseline_precision.pdf
+  reports\baseline_artifacts\metric_plots\baseline_recall.png
+  reports\baseline_artifacts\metric_plots\baseline_recall.pdf
+  reports\baseline_artifacts\metric_plots\baseline_f1.png
+  reports\baseline_artifacts\metric_plots\baseline_f1.pdf
+  reports\baseline_artifacts\metric_plots\baseline_roc_auc.png
+  reports\baseline_artifacts\metric_plots\baseline_roc_auc.pdf
+  reports\baseline_artifacts\confusion_matrices\<method>_confusion_matrix.png
+  reports\baseline_artifacts\confusion_matrices\<method>_confusion_matrix.pdf
+  reports\baseline_artifacts\tables\family_topk_table.csv
+  reports\baseline_artifacts\tables\family_topk_table.tex
+  reports\baseline_artifacts\tables\cross_architecture_table.csv
+  reports\baseline_artifacts\tables\cross_architecture_table.tex
+
+Run baseline family-attribution comparisons on the publication manifests:
+  python -m xnerf.baselines.train_eval --baseline malbert --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\malbert\seed_42 --num-workers 0 --batch-size 1
+
+  python -m xnerf.baselines.train_eval --baseline hydra --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\hydra\seed_42 --num-workers 0 --batch-size 1
+
+  python -m xnerf.baselines.train_eval --baseline gnn-malware --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\gnn-malware\seed_42 --num-workers 0 --batch-size 1
+
+Run SAFE for the cross-architecture comparison:
+  python -m xnerf.baselines.train_eval --baseline safe --train-manifest data\processed\train_publication_v2_50k.jsonl --val-manifest data\processed\val_publication_v2_50k.jsonl --test-manifest data\processed\test_publication_v2_50k.jsonl --out-dir runs\baselines\safe\seed_42 --num-workers 0 --batch-size 1
+
+Run the no-alignment X-NERF comparison:
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_grl
+
+Regenerate the requested family Top-1/Top-5 and cross-architecture tables:
+  python -m xnerf.baselines.generate_paper_artifacts --root runs\baselines --out-dir reports\baseline_artifacts --xnerf-metrics runs\publication_test\test_metrics.json --no-alignment-metrics runs\ablation\no_grl\test\metrics.json
+
+Generate ablation results CSV and IEEE table after all ablation checkpoints exist:
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --skip-train --official-checkpoint checkpoints_publication_v2_50k\best.pt --official-out runs\publication_test --num-workers 0 --batch-size 1
+
+Expected ablation outputs:
+  runs\ablation\ablation_results.json
+  runs\ablation\ablation_results.csv
+  runs\ablation\ablation_table.tex
+  runs\ablation\<variant>\test\metrics.json
+  runs\ablation\<variant>\test\predictions.npz
+
+Run a single ablation evaluation/training job if one variant is missing:
+  python -m xnerf.evaluation.ablation --config config_publication_v2_50k.yaml --out runs\ablation --num-workers 0 --batch-size 1 --variants no_binary
+
+Replace no_binary with:
+  no_api
+  no_cfg
+  no_memory
+  no_network
+  no_isr
+  no_sfs
+  no_grl
+  no_mnef
+
+
+9) Useful checks for extracted new datasets
 
 Check MalAPI2019 extracted text exists:
   dir data\raw\MalAPI2019 /s | findstr all_analysis_data
