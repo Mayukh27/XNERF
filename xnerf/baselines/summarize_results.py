@@ -8,6 +8,26 @@ from typing import Any, Iterable
 
 
 METRIC_KEYS = ("accuracy", "precision", "recall", "f1", "roc_auc")
+METHOD_LABELS = {
+    "ember-rf": "EMBER RF",
+    "ember rf": "EMBER RF",
+    "malconv": "Byte-CNN",
+    "byte-cnn": "Byte-CNN",
+    "byte_cnn": "Byte-CNN",
+    "cnn-malware": "Byte-CNN",
+    "cnn malware": "Byte-CNN",
+    "t_api": "Transformer-API",
+    "transformer-api": "Transformer-API",
+    "transformer_api": "Transformer-API",
+    "malbert": "Transformer-API",
+    "latefusion": "LateFusion",
+    "hydra": "LateFusion",
+    "cfg_gnn": "CFG-GNN",
+    "cfg-gnn": "CFG-GNN",
+    "gnn-malware": "CFG-GNN",
+    "gnn malware": "CFG-GNN",
+    "safe": "SAFE",
+}
 
 
 def _read_metrics(paths: Iterable[Path]) -> list[dict[str, Any]]:
@@ -35,7 +55,8 @@ def summarize(root: str | Path) -> dict[str, Any]:
 
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
-        name = str(row.get("method") or row.get("baseline") or "unknown")
+        raw_name = str(row.get("method") or row.get("baseline") or "unknown")
+        name = METHOD_LABELS.get(raw_name.strip().lower(), raw_name)
         grouped.setdefault(name, []).append(row)
 
     summary: dict[str, Any] = {}
@@ -79,4 +100,3 @@ def main(argv: Iterable[str] | None = None) -> dict[str, Any]:
 
 if __name__ == "__main__":
     main()
-

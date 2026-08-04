@@ -1,7 +1,7 @@
 {
   "accuracy": 0.9635761589403974,
   "architecture_malware_accuracy": null,
-  "baseline": "malbert",
+  "baseline": "t_api",
   "best_val_loss": 0.20968858124688267,
   "cross_architecture_accuracy": null,
   "device": "cuda",
@@ -36,7 +36,7 @@
       "val_loss": 0.23284688023850322
     }
   ],
-  "method": "malbert",
+  "method": "Transformer-API",
   "num_families": 71,
   "per_architecture_accuracy": {},
   "precision": 0.9687876229272687,

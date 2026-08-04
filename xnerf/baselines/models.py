@@ -66,34 +66,6 @@ class LateFusion(BaseModule):
             return logits
         return {"malware_logits": logits, "family_logits": self.family_head(features)}
 
-"""
-class SAFE(BaseModule):
-    """SAFE-style self-attentive sequence baseline for tokenized instruction/API streams."""
-
-    def __init__(self, vocab_size: int = 8192, embed_dim: int = 256, hidden_dim: int = 256, num_classes: int = 2, num_families: int | None = None):
-        super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=0)
-        self.encoder = nn.GRU(embed_dim, hidden_dim, batch_first=True, bidirectional=True)
-        self.attention = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.Tanh(), nn.Linear(hidden_dim, 1))
-        self.head = nn.Linear(hidden_dim * 2, num_classes)
-        self.family_head = nn.Linear(hidden_dim * 2, num_families) if num_families else None
-
-    def encode(self, token_ids: torch.Tensor) -> torch.Tensor:
-        token_ids = token_ids.clamp_min(0)
-        mask = token_ids.ne(0)
-        encoded, _ = self.encoder(self.embedding(token_ids))
-        scores = self.attention(encoded).squeeze(-1).masked_fill(~mask, -1e4)
-        weights = torch.softmax(scores, dim=-1).unsqueeze(-1)
-        return (encoded * weights).sum(dim=1)
-
-    def forward(self, token_ids: torch.Tensor) -> torch.Tensor | dict[str, torch.Tensor]:
-        features = self.encode(token_ids)
-        logits = self.head(features)
-        if self.family_head is None:
-            return logits
-        return {"malware_logits": logits, "family_logits": self.family_head(features)}
-"""
-
 class CrossArchitectureSiamese(BaseModule):
     """Siamese cross-architecture baseline. Inputs two feature tensors [B,D]."""
 
@@ -124,3 +96,11 @@ class CFG_GNN(BaseModule):
         if self.family_head is None:
             return logits
         return {"malware_logits": logits, "family_logits": self.family_head(features)}
+
+
+# Backward-compatible aliases for older scripts/checkpoints. Prefer the neutral
+# paper labels Byte-CNN, Transformer-API, LateFusion, and CFG-GNN in new reports.
+CNNMalware = Byte_CNN
+MalBERT = Transformer_Api
+HYDRA = LateFusion
+GNNMalware = CFG_GNN

@@ -36,7 +36,7 @@
       "val_loss": 0.009808966590910018
     }
   ],
-  "method": "malconv",
+  "method": "Byte-CNN",
   "num_families": 71,
   "per_architecture_accuracy": {},
   "precision": 0.9740991576764492,

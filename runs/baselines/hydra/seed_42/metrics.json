@@ -1,7 +1,7 @@
 {
   "accuracy": 0.9834437086092715,
   "architecture_malware_accuracy": null,
-  "baseline": "hydra",
+  "baseline": "latefusion",
   "best_val_loss": 0.23499316660663447,
   "cross_architecture_accuracy": null,
   "device": "cuda",
@@ -36,7 +36,7 @@
       "val_loss": 0.23499316660663447
     }
   ],
-  "method": "hydra",
+  "method": "LateFusion",
   "num_families": 71,
   "per_architecture_accuracy": {},
   "precision": 0.9821592931706299,

@@ -107,52 +107,12 @@ def run_validation(config_path: str = "config.yaml", checkpoint_path: str | None
         batch_size=cfg["training"].get("batch_size", 4),
         shuffle=False,
         num_workers=cfg["training"].get("num_workers", 2),
-         collate_fn=collate_dicts,
+        collate_fn=collate_dicts,
     )
 
     probs, labels = [], []
     for batch in tqdm(loader, desc="validate"):
         batch = move_to_device(batch, device)
-       # Print the first REAL executable sample only
-    paths = batch["path"]
-
-    for i, p in enumerate(paths):
-     p = str(p).lower()
-
-     if p.endswith((".exe", ".dll", ".elf", ".so", ".apk")):
-        print("\n========== TRAIN EXECUTABLE SAMPLE ==========")
-
-        print("Path:", batch["path"][i])
-        print("Dataset:", batch["dataset"][i])
-        print("Sample ID:", batch["sample_id"][i])
-
-        print("\nBinary")
-        print(" mean:", batch["binary_image"][i].float().mean().item())
-        print(" max :", batch["binary_image"][i].float().max().item())
-
-        print("\nMemory")
-        print(" mean:", batch["memory_trace"][i].float().mean().item())
-        print(" max :", batch["memory_trace"][i].float().max().item())
-
-        print("\nAPI")
-        print(" nonzero:", (batch["api_ids"][i] != 0).sum().item())
-        print(" sum:", batch["api_ids"][i].sum().item())
-
-        print("\nNetwork")
-        print(" nonzero:", (batch["network_ids"][i] != 0).sum().item())
-        print(" sum:", batch["network_ids"][i].sum().item())
-
-        print("\nISR")
-        print(" sum:", batch["isr"][i].sum().item())
-
-        print("\nCFG")
-        print(" nodes:", batch["graph_x"].shape)
-        print(" edges:", batch["graph_edge_index"].shape)
-
-        print("\nArch:", batch["arch_id"][i].item())
-        print("=============================================\n")
-
-        raise SystemExit
         outputs = model(batch)
         probs.append(torch.softmax(outputs["malware_logits"], dim=-1).cpu().numpy())
         labels.append(batch["label"].cpu().numpy())
