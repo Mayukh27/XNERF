@@ -6,7 +6,6 @@ data/archives/
 data/raw/
 data/cache/
 data/processed/
-runs/
 checkpoints/
 models/*.pt
 models/*.pth
@@ -17,4 +16,4 @@ data/archives/**/*.zip
 data/archives/**/*.tar.gz
 /xnerf-malware-archives/
 desktop.ini
-reports
+reports/

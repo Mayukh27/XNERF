@@ -10,7 +10,7 @@ from xnerf.encoders.cfg import CFGEncoder
 from xnerf.utils.base import BaseModule
 
 
-class CNNMalware(BaseModule):
+class Byte_CNN(BaseModule):
     """CNN byte-image baseline. Input [B,1,H,W], output logits [B,C]."""
 
     def __init__(self, num_classes: int = 2):
@@ -26,7 +26,7 @@ class CNNMalware(BaseModule):
         return self.net(image[:, :1])
 
 
-class MalBERT(BaseModule):
+class Transformer_Api(BaseModule):
     """Transformer token baseline. Input token ids [B,T], output logits [B,C]."""
 
     def __init__(self, vocab_size: int = 8192, num_classes: int = 2, num_families: int | None = None):
@@ -46,7 +46,7 @@ class MalBERT(BaseModule):
         return {"malware_logits": logits, "family_logits": self.family_head(features)}
 
 
-class HYDRA(BaseModule):
+class LateFusion(BaseModule):
     """Hybrid static/dynamic baseline. Inputs image [B,1,H,W], api_ids [B,T]."""
 
     def __init__(self, num_classes: int = 2, num_families: int | None = None):
@@ -66,7 +66,7 @@ class HYDRA(BaseModule):
             return logits
         return {"malware_logits": logits, "family_logits": self.family_head(features)}
 
-
+"""
 class SAFE(BaseModule):
     """SAFE-style self-attentive sequence baseline for tokenized instruction/API streams."""
 
@@ -92,7 +92,7 @@ class SAFE(BaseModule):
         if self.family_head is None:
             return logits
         return {"malware_logits": logits, "family_logits": self.family_head(features)}
-
+"""
 
 class CrossArchitectureSiamese(BaseModule):
     """Siamese cross-architecture baseline. Inputs two feature tensors [B,D]."""
@@ -106,7 +106,7 @@ class CrossArchitectureSiamese(BaseModule):
         return {"za": za, "zb": zb, "similarity": (za * zb).sum(dim=-1)}
 
 
-class GNNMalware(BaseModule):
+class CFG_GNN(BaseModule):
     """GNN CFG baseline. Inputs PyG graph tensors, output logits [B,C]."""
 
     def __init__(self, node_dim: int = 64, num_classes: int = 2, num_families: int | None = None):

@@ -21,7 +21,7 @@ from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.io import read_jsonl
 
 
-BASELINE_CHOICES = ("ember-rf", "malconv", "malbert", "hydra", "gnn-malware", "safe")
+BASELINE_CHOICES = ("ember-rf", "malconv", "t_api", "latefusion", "cfg_gnn", "safe")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -165,7 +165,7 @@ def _row_has_modality(row: dict[str, Any], baseline: str) -> bool:
         return bool(row.get("api_ids"))
     if baseline == "hydra":
         return bool(row.get("api_ids")) and row.get("data_type") not in {"feature_csv", "feature_parquet"}
-    if baseline == "gnn-malware":
+    if baseline == "cfg_gnn":
         return str(row.get("path", "")).lower().endswith(".edgelist")
     return True
 
@@ -187,15 +187,15 @@ def _filtered_dataset(manifest: str | Path, baseline: str, require_cache: bool) 
 
 def _make_model(baseline: str, num_families: int | None = None) -> torch.nn.Module:
     if baseline == "malconv":
-        return CNNMalware(num_classes=2)
-    if baseline == "malbert":
-        return MalBERT(num_classes=2, num_families=num_families)
-    if baseline == "hydra":
-        return HYDRA(num_classes=2, num_families=num_families)
-    if baseline == "gnn-malware":
+        return Byte_CNN(num_classes=2)
+    if baseline == "t_api":
+        return Transformer_Api(num_classes=2, num_families=num_families)
+    if baseline == "latefusion":
+        return LateFusion(num_classes=2, num_families=num_families)
+    if baseline == "cfg_gnn":
         return GNNMalware(node_dim=4, num_classes=2, num_families=num_families)
-    if baseline == "safe":
-        return SAFE(num_classes=2, num_families=num_families)
+    #if baseline == "safe":
+    #   return SAFE(num_classes=2, num_families=num_families)
     raise ValueError(f"unsupported neural baseline: {baseline}")
 
 
@@ -208,11 +208,11 @@ def _as_output_dict(raw: torch.Tensor | dict[str, torch.Tensor]) -> dict[str, to
 def _forward_baseline(model: torch.nn.Module, baseline: str, batch: dict[str, Any]) -> tuple[dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
     if baseline == "malconv":
         return _as_output_dict(model(batch["binary_image"])), batch["label"], batch["arch_id"], batch["family_label"]
-    if baseline == "malbert":
+    if baseline == "t_api":
         return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
-    if baseline == "hydra":
+    if baseline == "latefusion":
         return _as_output_dict(model(batch["binary_image"], batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
-    if baseline == "gnn-malware":
+    if baseline == "cfg_gnn":
         outputs = _as_output_dict(model(batch["graph_x"], batch["graph_edge_index"], batch["graph_batch"]))
         sample_ids = batch["graph_sample_ids"].to(batch["label"].device)
         return (
@@ -221,8 +221,8 @@ def _forward_baseline(model: torch.nn.Module, baseline: str, batch: dict[str, An
             batch["arch_id"].index_select(0, sample_ids),
             batch["family_label"].index_select(0, sample_ids),
         )
-    if baseline == "safe":
-        return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
+    #if baseline == "safe":
+    #    return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
     raise ValueError(f"unsupported neural baseline: {baseline}")
 
 

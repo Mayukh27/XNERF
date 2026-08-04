@@ -1,0 +1,2 @@
+variant,label,detection_accuracy,detection_precision,detection_recall,detection_f1,roc_auc,family_top1_accuracy,family_top5_accuracy,cross_architecture_accuracy,detection_accuracy_pct,detection_precision_pct,detection_recall_pct,detection_f1_pct,roc_auc_pct,family_top1_accuracy_pct,family_top5_accuracy_pct,cross_architecture_accuracy_pct
+no_isr,w/o ISR Encoder,0.9106,0.9104098492433331,0.9106,0.9104065189970788,0.9660085884131714,0.44218579234972677,0.585136612021858,0.8708609271523179,91.06,91.04,91.06,91.04,96.60,44.22,58.51,87.09
