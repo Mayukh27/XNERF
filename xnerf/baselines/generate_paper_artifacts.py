@@ -23,13 +23,35 @@ METRIC_LABELS = {
     "cross_architecture_accuracy": "Cross-Arch Accuracy",
 }
 
+METHOD_LABELS = {
+    "ember-rf": "EMBER RF",
+    "ember rf": "EMBER RF",
+    "malconv": "Byte-CNN",
+    "byte-cnn": "Byte-CNN",
+    "byte_cnn": "Byte-CNN",
+    "cnn-malware": "Byte-CNN",
+    "cnn malware": "Byte-CNN",
+    "t_api": "Transformer-API",
+    "transformer-api": "Transformer-API",
+    "transformer_api": "Transformer-API",
+    "malbert": "Transformer-API",
+    "latefusion": "LateFusion",
+    "hydra": "LateFusion",
+    "cfg_gnn": "CFG-GNN",
+    "cfg-gnn": "CFG-GNN",
+    "gnn-malware": "CFG-GNN",
+    "gnn malware": "CFG-GNN",
+    "safe": "SAFE",
+}
+
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _method_name(metrics: dict[str, Any]) -> str:
-    return str(metrics.get("method") or metrics.get("baseline") or "unknown")
+    raw = str(metrics.get("method") or metrics.get("baseline") or "unknown")
+    return METHOD_LABELS.get(raw.strip().lower(), raw)
 
 
 def _collect_runs(root: Path) -> dict[str, list[tuple[Path, dict[str, Any]]]]:
@@ -111,16 +133,15 @@ def _write_rows_csv(path: Path, fieldnames: tuple[str, ...], rows: list[dict[str
 
 
 def _save_family_table(grouped: dict[str, list[tuple[Path, dict[str, Any]]]], out_dir: Path) -> dict[str, str]:
-    wanted = {"gnn-malware": "GNN Malware", "malbert": "MalBERT", "hydra": "HYDRA"}
+    wanted = {"CFG-GNN", "Transformer-API", "LateFusion"}
     rows: list[dict[str, Any]] = []
     for method, runs in sorted(grouped.items()):
-        key = method.lower()
-        if key not in wanted:
+        if method not in wanted:
             continue
         run_metrics = [metrics for _, metrics in runs]
         top1, _ = _metric_stats(run_metrics, "family_top1_accuracy")
         top5, _ = _metric_stats(run_metrics, "family_top5_accuracy")
-        rows.append({"method": wanted[key], "family_top1_accuracy_pct": _fmt_pct(top1), "family_top5_accuracy_pct": _fmt_pct(top5)})
+        rows.append({"method": method, "family_top1_accuracy_pct": _fmt_pct(top1), "family_top5_accuracy_pct": _fmt_pct(top5)})
 
     out_dir.mkdir(parents=True, exist_ok=True)
     csv_path = out_dir / "family_topk_table.csv"

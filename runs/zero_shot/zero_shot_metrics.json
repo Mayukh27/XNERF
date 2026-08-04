@@ -1,0 +1,6 @@
+{
+  "zero_shot_accuracy": 0.2968593718743749,
+  "zero_shot_f1": 0.27042815050003394,
+  "prototype_count": 91,
+  "evaluated_samples": 4999
+}

@@ -1,0 +1,67 @@
+{
+  "accuracy": 0.9635761589403974,
+  "architecture_malware_accuracy": null,
+  "baseline": "t_api",
+  "best_val_loss": 0.20968858124688267,
+  "cross_architecture_accuracy": null,
+  "device": "cuda",
+  "f1": 0.9658575893801853,
+  "family_accuracy": null,
+  "family_top1_accuracy": 0.3791208791208791,
+  "family_top5_accuracy": 0.9175824175824175,
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.3579023311878073,
+      "val_loss": 0.3416845618281513
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.2570250129391407,
+      "val_loss": 0.24251050129532814
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.2386286241741016,
+      "val_loss": 0.23929739277809858
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.2036116617506948,
+      "val_loss": 0.20968858124688267
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.18130922435686506,
+      "val_loss": 0.23284688023850322
+    }
+  ],
+  "method": "Transformer-API",
+  "num_families": 71,
+  "per_architecture_accuracy": {},
+  "precision": 0.9687876229272687,
+  "recall": 0.9635761589403974,
+  "roc_auc": 0.9465753424657535,
+  "seed": 42,
+  "test_manifest": "data/processed/test_publication_v2_50k.jsonl",
+  "test_rows": {
+    "manifest": "data/processed/test_publication_v2_50k.jsonl",
+    "rows_skipped_modality": 4698,
+    "rows_total": 5000,
+    "rows_used": 302
+  },
+  "train_manifest": "data/processed/train_publication_v2_50k.jsonl",
+  "train_rows": {
+    "manifest": "data/processed/train_publication_v2_50k.jsonl",
+    "rows_skipped_modality": 37681,
+    "rows_total": 40000,
+    "rows_used": 2319
+  },
+  "val_manifest": "data/processed/val_publication_v2_50k.jsonl",
+  "val_rows": {
+    "manifest": "data/processed/val_publication_v2_50k.jsonl",
+    "rows_skipped_modality": 4695,
+    "rows_total": 5000,
+    "rows_used": 305
+  }
+}

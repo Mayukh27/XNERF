@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from evaluation.metrics import classification_metrics
-from xnerf.baselines.models import CNNMalware, GNNMalware, HYDRA, SAFE, MalBERT
+from xnerf.baselines.models import Byte_CNN, CFG_GNN, LateFusion, Transformer_Api
 from xnerf.datasets.loaders import MalwareManifestDataset
 from xnerf.evaluation.evaluate import evaluate_family_predictions
 from xnerf.preprocessing.ontology import ARCH_TO_ID
@@ -21,12 +21,51 @@ from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.io import read_jsonl
 
 
-BASELINE_CHOICES = ("ember-rf", "malconv", "malbert", "hydra", "gnn-malware", "safe")
+BASELINE_ALIASES = {
+    "ember-rf": "ember-rf",
+    "malconv": "malconv",
+    "byte-cnn": "malconv",
+    "byte_cnn": "malconv",
+    "cnn-malware": "malconv",
+    "cnn_malware": "malconv",
+    "t_api": "t_api",
+    "transformer-api": "t_api",
+    "transformer_api": "t_api",
+    "malbert": "t_api",
+    "latefusion": "latefusion",
+    "hydra": "latefusion",
+    "cfg_gnn": "cfg_gnn",
+    "cfg-gnn": "cfg_gnn",
+    "gnn-malware": "cfg_gnn",
+    "gnn_malware": "cfg_gnn",
+    "safe": "safe",
+}
+BASELINE_CHOICES = tuple(BASELINE_ALIASES)
+BASELINE_DISPLAY_NAMES = {
+    "ember-rf": "EMBER RF",
+    "malconv": "Byte-CNN",
+    "t_api": "Transformer-API",
+    "latefusion": "LateFusion",
+    "cfg_gnn": "CFG-GNN",
+    "safe": "SAFE",
+}
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _canonical_baseline(name: str) -> str:
+    key = str(name).strip().lower()
+    try:
+        return BASELINE_ALIASES[key]
+    except KeyError as exc:
+        raise ValueError(f"unsupported baseline: {name}") from exc
+
+
+def _display_name(baseline: str) -> str:
+    return BASELINE_DISPLAY_NAMES.get(_canonical_baseline(baseline), baseline)
 
 
 def _write_predictions(
@@ -139,7 +178,7 @@ def train_ember_rf(args: argparse.Namespace) -> dict[str, Any]:
 
     metrics = classification_metrics(y_test, y_prob, arch_true=arch_test)
     payload = {
-        "method": "EMBER RF",
+        "method": _display_name("ember-rf"),
         "baseline": "ember-rf",
         "seed": args.seed,
         "train_manifest": str(args.train_manifest),
@@ -159,18 +198,20 @@ def train_ember_rf(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def _row_has_modality(row: dict[str, Any], baseline: str) -> bool:
+    baseline = _canonical_baseline(baseline)
     if baseline == "malconv":
         return row.get("data_type") not in {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"}
-    if baseline in {"malbert", "safe"}:
+    if baseline in {"t_api", "safe"}:
         return bool(row.get("api_ids"))
-    if baseline == "hydra":
+    if baseline == "latefusion":
         return bool(row.get("api_ids")) and row.get("data_type") not in {"feature_csv", "feature_parquet"}
-    if baseline == "gnn-malware":
+    if baseline == "cfg_gnn":
         return str(row.get("path", "")).lower().endswith(".edgelist")
     return True
 
 
 def _filtered_dataset(manifest: str | Path, baseline: str, require_cache: bool) -> tuple[Subset, dict[str, Any]]:
+    baseline = _canonical_baseline(baseline)
     rows = read_jsonl(manifest)
     indices = [idx for idx, row in enumerate(rows) if _row_has_modality(row, baseline)]
     if not indices:
@@ -186,16 +227,17 @@ def _filtered_dataset(manifest: str | Path, baseline: str, require_cache: bool) 
 
 
 def _make_model(baseline: str, num_families: int | None = None) -> torch.nn.Module:
+    baseline = _canonical_baseline(baseline)
     if baseline == "malconv":
-        return CNNMalware(num_classes=2)
-    if baseline == "malbert":
-        return MalBERT(num_classes=2, num_families=num_families)
-    if baseline == "hydra":
-        return HYDRA(num_classes=2, num_families=num_families)
-    if baseline == "gnn-malware":
-        return GNNMalware(node_dim=4, num_classes=2, num_families=num_families)
-    if baseline == "safe":
-        return SAFE(num_classes=2, num_families=num_families)
+        return Byte_CNN(num_classes=2)
+    if baseline == "t_api":
+        return Transformer_Api(num_classes=2, num_families=num_families)
+    if baseline == "latefusion":
+        return LateFusion(num_classes=2, num_families=num_families)
+    if baseline == "cfg_gnn":
+        return CFG_GNN(node_dim=4, num_classes=2, num_families=num_families)
+    #if baseline == "safe":
+    #   return SAFE(num_classes=2, num_families=num_families)
     raise ValueError(f"unsupported neural baseline: {baseline}")
 
 
@@ -206,13 +248,14 @@ def _as_output_dict(raw: torch.Tensor | dict[str, torch.Tensor]) -> dict[str, to
 
 
 def _forward_baseline(model: torch.nn.Module, baseline: str, batch: dict[str, Any]) -> tuple[dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
+    baseline = _canonical_baseline(baseline)
     if baseline == "malconv":
         return _as_output_dict(model(batch["binary_image"])), batch["label"], batch["arch_id"], batch["family_label"]
-    if baseline == "malbert":
+    if baseline == "t_api":
         return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
-    if baseline == "hydra":
+    if baseline == "latefusion":
         return _as_output_dict(model(batch["binary_image"], batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
-    if baseline == "gnn-malware":
+    if baseline == "cfg_gnn":
         outputs = _as_output_dict(model(batch["graph_x"], batch["graph_edge_index"], batch["graph_batch"]))
         sample_ids = batch["graph_sample_ids"].to(batch["label"].device)
         return (
@@ -221,8 +264,8 @@ def _forward_baseline(model: torch.nn.Module, baseline: str, batch: dict[str, An
             batch["arch_id"].index_select(0, sample_ids),
             batch["family_label"].index_select(0, sample_ids),
         )
-    if baseline == "safe":
-        return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
+    #if baseline == "safe":
+    #    return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
     raise ValueError(f"unsupported neural baseline: {baseline}")
 
 
@@ -272,6 +315,7 @@ def _evaluate_neural(
 
 
 def train_neural(args: argparse.Namespace) -> dict[str, Any]:
+    args.baseline = _canonical_baseline(args.baseline)
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     train_ds, train_stats = _filtered_dataset(args.train_manifest, args.baseline, args.require_cache)
     val_ds, val_stats = _filtered_dataset(args.val_manifest or args.test_manifest, args.baseline, args.require_cache)
@@ -329,7 +373,7 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
 
     metrics, predictions = _evaluate_neural(model, test_loader, args.baseline, device)
     payload = {
-        "method": args.baseline,
+        "method": _display_name(args.baseline),
         "baseline": args.baseline,
         "seed": args.seed,
         "device": str(device),
@@ -389,6 +433,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Iterable[str] | None = None) -> dict[str, Any]:
     parser = build_parser()
     args = parser.parse_args(argv)
+    args.baseline = _canonical_baseline(args.baseline)
     if args.out_dir is None:
         args.out_dir = str(Path("runs") / "baselines" / args.baseline / f"seed_{args.seed}")
 

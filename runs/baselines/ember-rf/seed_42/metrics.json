@@ -1,0 +1,36 @@
+{
+  "accuracy": 0.9626922107385933,
+  "architecture_malware_accuracy": 0.9646799116997793,
+  "baseline": "ember-rf",
+  "cross_architecture_accuracy": 0.9646799116997793,
+  "f1": 0.9626829370757054,
+  "family_accuracy": null,
+  "method": "EMBER RF",
+  "per_architecture_accuracy": {
+    "arm": 0.9617834394904459,
+    "mips": 0.9603174603174603,
+    "x86": 0.9703504043126685
+  },
+  "precision": 0.9629328203981173,
+  "recall": 0.9626922107385933,
+  "roc_auc": 0.9942324293600334,
+  "seed": 42,
+  "test_manifest": "data/processed/test_publication_v2_50k.jsonl",
+  "test_rows": {
+    "manifest": "data/processed/test_publication_v2_50k.jsonl",
+    "max_features": 512,
+    "rows_from_feature_cache": 3665,
+    "rows_skipped_missing_features": 1033,
+    "rows_total": 5000,
+    "rows_used": 3967
+  },
+  "train_manifest": "data/processed/train_publication_v2_50k.jsonl",
+  "train_rows": {
+    "manifest": "data/processed/train_publication_v2_50k.jsonl",
+    "max_features": 512,
+    "rows_from_feature_cache": 29427,
+    "rows_skipped_missing_features": 8254,
+    "rows_total": 40000,
+    "rows_used": 31746
+  }
+}

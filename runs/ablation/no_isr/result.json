@@ -1,0 +1,46 @@
+{
+  "variant": "no_isr",
+  "label": "w/o ISR Encoder",
+  "checkpoint": "runs\\ablation\\no_isr\\checkpoints\\best.pt",
+  "train": {
+    "best_val_loss": 0.45795917341312453,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 0.6050784975294475,
+        "val_loss": 1.734505650013109
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.4306829597940039,
+        "val_loss": 0.45795917341312453
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.39758594073394743,
+        "val_loss": 2.7477229469866957
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.37149752507135864,
+        "val_loss": 4.381581715193834
+      }
+    ]
+  },
+  "test": {
+    "accuracy": 0.9106,
+    "precision": 0.9104098492433331,
+    "recall": 0.9106,
+    "f1": 0.9104065189970788,
+    "roc_auc": 0.9660085884131714,
+    "architecture_malware_accuracy": 0.8708609271523179,
+    "cross_architecture_accuracy": 0.8708609271523179,
+    "per_architecture_accuracy": {
+      "x86": 0.8679245283018868,
+      "arm": 0.8980891719745223,
+      "mips": 0.8624338624338624
+    },
+    "family_top1_accuracy": 0.44218579234972677,
+    "family_top5_accuracy": 0.585136612021858
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "accuracy": 0.7762,
+  "precision": 0.7925717921178325,
+  "recall": 0.7762,
+  "f1": 0.7628958429013308,
+  "roc_auc": 0.9018019147005731,
+  "architecture_malware_accuracy": 0.3079470198675497,
+  "cross_architecture_accuracy": 0.3079470198675497,
+  "per_architecture_accuracy": {
+    "x86": 0.20485175202156333,
+    "arm": 0.6942675159235668,
+    "mips": 0.24867724867724866
+  },
+  "family_top1_accuracy": 0.4373770491803279,
+  "family_top5_accuracy": 0.533551912568306
+}
