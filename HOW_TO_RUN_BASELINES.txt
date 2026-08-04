@@ -43,15 +43,13 @@ This is the first baseline to run because it is fast and strong.
 
 PowerShell:
 
-  python -m xnerf.baselines.train_eval `
-    --baseline ember-rf `
-    --seed 42 `
-    --out-dir runs\baselines\ember-rf\seed_42
+  python -m xnerf.baselines.train_eval --baseline ember-rf --seed 42 --out-dir runs\baselines\ember-rf\seed_42
 
 Expected outputs:
 
   runs\baselines\ember-rf\seed_42\model.pkl
   runs\baselines\ember-rf\seed_42\metrics.json
+  runs\baselines\ember-rf\seed_42\predictions.npz
 
 
 STEP 4 - Train and test MalConv
@@ -61,13 +59,7 @@ MalConv is the raw-byte CNN baseline.
 
 PowerShell:
 
-  python -m xnerf.baselines.train_eval `
-    --baseline malconv `
-    --seed 42 `
-    --batch-size 16 `
-    --epochs 5 `
-    --out-dir runs\baselines\malconv\seed_42
-
+  python -m xnerf.baselines.train_eval  --baseline malconv  --seed 42  --batch-size 16   --epochs 5  --out-dir runs\baselines\malconv\seed_42
 
 STEP 5 - Train and test MalBERT
 -------------------------------
@@ -76,12 +68,7 @@ MalBERT is the API-sequence Transformer baseline.
 
 PowerShell:
 
-  python -m xnerf.baselines.train_eval `
-    --baseline malbert `
-    --seed 42 `
-    --batch-size 16 `
-    --epochs 5 `
-    --out-dir runs\baselines\malbert\seed_42
+  python -m xnerf.baselines.train_eval --baseline malbert --seed 42 --batch-size 16 --epochs 5 --out-dir runs\baselines\malbert\seed_42
 
 
 STEP 6 - Train and test HYDRA-style fusion
@@ -93,12 +80,7 @@ If this is not the exact official HYDRA implementation, call it
 
 PowerShell:
 
-  python -m xnerf.baselines.train_eval `
-    --baseline hydra `
-    --seed 42 `
-    --batch-size 8 `
-    --epochs 5 `
-    --out-dir runs\baselines\hydra\seed_42
+  python -m xnerf.baselines.train_eval --baseline hydra   --seed 42  --batch-size 8 --epochs 5  --out-dir runs\baselines\hydra\seed_42
 
 
 STEP 7 - Train and test GNN Malware
@@ -108,12 +90,7 @@ This is the CFG graph-only baseline.
 
 PowerShell:
 
-  python -m xnerf.baselines.train_eval `
-    --baseline gnn-malware `
-    --seed 42 `
-    --batch-size 8 `
-    --epochs 5 `
-    --out-dir runs\baselines\gnn-malware\seed_42
+  python -m xnerf.baselines.train_eval --baseline gnn-malware --seed 42 --batch-size 8 --epochs 5 --out-dir runs\baselines\gnn-malware\seed_42
 
 
 STEP 8 - Run three seeds for paper results
@@ -149,7 +126,40 @@ This prints a LaTeX table and saves:
   runs\baselines\summary.json
 
 
-STEP 10 - Use only real generated numbers in the paper
+STEP 10 - Generate graphs and confusion matrices for the paper
+--------------------------------------------------------------
+
+After all baselines are trained and tested, run:
+
+  python -m xnerf.baselines.generate_paper_artifacts `
+    --root runs\baselines `
+    --out-dir reports\baseline_artifacts
+
+This creates:
+
+  reports\baseline_artifacts\paper_artifacts.json
+  reports\baseline_artifacts\metric_plots\baseline_accuracy.png
+  reports\baseline_artifacts\metric_plots\baseline_accuracy.pdf
+  reports\baseline_artifacts\metric_plots\baseline_precision.png
+  reports\baseline_artifacts\metric_plots\baseline_precision.pdf
+  reports\baseline_artifacts\metric_plots\baseline_recall.png
+  reports\baseline_artifacts\metric_plots\baseline_recall.pdf
+  reports\baseline_artifacts\metric_plots\baseline_f1.png
+  reports\baseline_artifacts\metric_plots\baseline_f1.pdf
+  reports\baseline_artifacts\metric_plots\baseline_roc_auc.png
+  reports\baseline_artifacts\metric_plots\baseline_roc_auc.pdf
+  reports\baseline_artifacts\confusion_matrices\<method>_confusion_matrix.png
+  reports\baseline_artifacts\confusion_matrices\<method>_confusion_matrix.pdf
+
+Use PNG files for quick viewing. Use PDF files in LaTeX when possible.
+
+Important:
+
+  Confusion matrices require predictions.npz files. These are generated
+  automatically by xnerf.baselines.train_eval for new baseline runs.
+
+
+STEP 11 - Use only real generated numbers in the paper
 ------------------------------------------------------
 
 Use the values from each metrics.json file.
@@ -159,7 +169,7 @@ If a value is copied from another paper, mark it clearly as an external
 reported result and do not claim it was trained on your split.
 
 
-STEP 11 - What to write in the paper
+STEP 12 - What to write in the paper
 ------------------------------------
 
 Use this text:

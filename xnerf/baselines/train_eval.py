@@ -13,19 +13,41 @@ from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 
 from evaluation.metrics import classification_metrics
-from xnerf.baselines.models import CNNMalware, GNNMalware, HYDRA, MalBERT
+from xnerf.baselines.models import CNNMalware, GNNMalware, HYDRA, SAFE, MalBERT
 from xnerf.datasets.loaders import MalwareManifestDataset
+from xnerf.evaluation.evaluate import evaluate_family_predictions
 from xnerf.preprocessing.ontology import ARCH_TO_ID
 from xnerf.utils.base import collate_dicts, move_to_device
 from xnerf.utils.io import read_jsonl
 
 
-BASELINE_CHOICES = ("ember-rf", "malconv", "malbert", "hydra", "gnn-malware")
+BASELINE_CHOICES = ("ember-rf", "malconv", "malbert", "hydra", "gnn-malware", "safe")
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _write_predictions(
+    path: Path,
+    y_true: np.ndarray,
+    y_prob: np.ndarray,
+    arch_true: np.ndarray,
+    family_true: np.ndarray | None = None,
+    family_prob: np.ndarray | None = None,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "y_true": np.asarray(y_true),
+        "y_prob": np.asarray(y_prob),
+        "y_pred": np.asarray(y_prob).argmax(axis=1),
+        "arch_true": np.asarray(arch_true),
+    }
+    if family_true is not None and family_prob is not None:
+        payload["family_true"] = np.asarray(family_true)
+        payload["family_prob"] = np.asarray(family_prob)
+    np.savez_compressed(path, **payload)
 
 
 def _load_tensor_feature(path: str | Path, max_dim: int) -> np.ndarray:
@@ -130,6 +152,7 @@ def train_ember_rf(args: argparse.Namespace) -> dict[str, Any]:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     _write_json(out_dir / "metrics.json", payload)
+    _write_predictions(out_dir / "predictions.npz", y_test, y_prob, arch_test)
     with (out_dir / "model.pkl").open("wb") as f:
         pickle.dump(model, f)
     return payload
@@ -138,7 +161,7 @@ def train_ember_rf(args: argparse.Namespace) -> dict[str, Any]:
 def _row_has_modality(row: dict[str, Any], baseline: str) -> bool:
     if baseline == "malconv":
         return row.get("data_type") not in {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"}
-    if baseline == "malbert":
+    if baseline in {"malbert", "safe"}:
         return bool(row.get("api_ids"))
     if baseline == "hydra":
         return bool(row.get("api_ids")) and row.get("data_type") not in {"feature_csv", "feature_parquet"}
@@ -162,30 +185,52 @@ def _filtered_dataset(manifest: str | Path, baseline: str, require_cache: bool) 
     return Subset(dataset, indices), stats
 
 
-def _make_model(baseline: str) -> torch.nn.Module:
+def _make_model(baseline: str, num_families: int | None = None) -> torch.nn.Module:
     if baseline == "malconv":
         return CNNMalware(num_classes=2)
     if baseline == "malbert":
-        return MalBERT(num_classes=2)
+        return MalBERT(num_classes=2, num_families=num_families)
     if baseline == "hydra":
-        return HYDRA(num_classes=2)
+        return HYDRA(num_classes=2, num_families=num_families)
     if baseline == "gnn-malware":
-        return GNNMalware(node_dim=4, num_classes=2)
+        return GNNMalware(node_dim=4, num_classes=2, num_families=num_families)
+    if baseline == "safe":
+        return SAFE(num_classes=2, num_families=num_families)
     raise ValueError(f"unsupported neural baseline: {baseline}")
 
 
-def _forward_baseline(model: torch.nn.Module, baseline: str, batch: dict[str, Any]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def _as_output_dict(raw: torch.Tensor | dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    if isinstance(raw, dict):
+        return raw
+    return {"malware_logits": raw}
+
+
+def _forward_baseline(model: torch.nn.Module, baseline: str, batch: dict[str, Any]) -> tuple[dict[str, torch.Tensor], torch.Tensor, torch.Tensor, torch.Tensor]:
     if baseline == "malconv":
-        return model(batch["binary_image"]), batch["label"], batch["arch_id"]
+        return _as_output_dict(model(batch["binary_image"])), batch["label"], batch["arch_id"], batch["family_label"]
     if baseline == "malbert":
-        return model(batch["api_ids"]), batch["label"], batch["arch_id"]
+        return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
     if baseline == "hydra":
-        return model(batch["binary_image"], batch["api_ids"]), batch["label"], batch["arch_id"]
+        return _as_output_dict(model(batch["binary_image"], batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
     if baseline == "gnn-malware":
-        logits = model(batch["graph_x"], batch["graph_edge_index"], batch["graph_batch"])
+        outputs = _as_output_dict(model(batch["graph_x"], batch["graph_edge_index"], batch["graph_batch"]))
         sample_ids = batch["graph_sample_ids"].to(batch["label"].device)
-        return logits, batch["label"].index_select(0, sample_ids), batch["arch_id"].index_select(0, sample_ids)
+        return (
+            outputs,
+            batch["label"].index_select(0, sample_ids),
+            batch["arch_id"].index_select(0, sample_ids),
+            batch["family_label"].index_select(0, sample_ids),
+        )
+    if baseline == "safe":
+        return _as_output_dict(model(batch["api_ids"])), batch["label"], batch["arch_id"], batch["family_label"]
     raise ValueError(f"unsupported neural baseline: {baseline}")
+
+
+def _loss(outputs: dict[str, torch.Tensor], labels: torch.Tensor, family_labels: torch.Tensor, family_weight: float) -> torch.Tensor:
+    loss = torch.nn.functional.cross_entropy(outputs["malware_logits"], labels)
+    if "family_logits" in outputs and torch.any(family_labels.ge(0)):
+        loss = loss + family_weight * torch.nn.functional.cross_entropy(outputs["family_logits"], family_labels, ignore_index=-1)
+    return loss
 
 
 def _evaluate_neural(
@@ -193,20 +238,37 @@ def _evaluate_neural(
     loader: DataLoader,
     baseline: str,
     device: torch.device,
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
     model.eval()
     y_true: list[np.ndarray] = []
     y_prob: list[np.ndarray] = []
     arch_true: list[np.ndarray] = []
+    family_true: list[np.ndarray] = []
+    family_prob: list[np.ndarray] = []
     with torch.no_grad():
         for batch in tqdm(loader, desc=f"{baseline} test"):
             batch = move_to_device(batch, device)
-            logits, labels, arch_ids = _forward_baseline(model, baseline, batch)
-            probs = torch.softmax(logits, dim=-1)
+            outputs, labels, arch_ids, family_labels = _forward_baseline(model, baseline, batch)
+            probs = torch.softmax(outputs["malware_logits"], dim=-1)
             y_true.append(labels.detach().cpu().numpy())
             y_prob.append(probs.detach().cpu().numpy())
             arch_true.append(arch_ids.detach().cpu().numpy())
-    return classification_metrics(np.concatenate(y_true), np.concatenate(y_prob), arch_true=np.concatenate(arch_true))
+            if "family_logits" in outputs:
+                family_true.append(family_labels.detach().cpu().numpy())
+                family_prob.append(torch.softmax(outputs["family_logits"], dim=-1).detach().cpu().numpy())
+    arrays = {
+        "y_true": np.concatenate(y_true),
+        "y_prob": np.concatenate(y_prob),
+        "arch_true": np.concatenate(arch_true),
+    }
+    metrics = classification_metrics(arrays["y_true"], arrays["y_prob"], arch_true=arrays["arch_true"])
+    if family_true and family_prob:
+        arrays["family_true"] = np.concatenate(family_true)
+        arrays["family_prob"] = np.concatenate(family_prob)
+        metrics.update(evaluate_family_predictions(arrays["family_true"], arrays["family_prob"]))
+    else:
+        metrics.update({"family_top1_accuracy": None, "family_top5_accuracy": None})
+    return metrics, arrays
 
 
 def train_neural(args: argparse.Namespace) -> dict[str, Any]:
@@ -219,7 +281,8 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=collate_dicts)
     test_loader = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=collate_dicts)
 
-    model = _make_model(args.baseline).to(device)
+    num_families = len(getattr(train_ds.dataset if isinstance(train_ds, Subset) else train_ds, "family_names", []) or [])
+    model = _make_model(args.baseline, num_families=num_families or None).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     best_val_loss = float("inf")
     best_state: dict[str, torch.Tensor] | None = None
@@ -233,8 +296,8 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
             if args.debug_max_batches and batch_idx >= args.debug_max_batches:
                 break
             batch = move_to_device(batch, device)
-            logits, labels, _ = _forward_baseline(model, args.baseline, batch)
-            loss = torch.nn.functional.cross_entropy(logits, labels)
+            outputs, labels, _, family_labels = _forward_baseline(model, args.baseline, batch)
+            loss = _loss(outputs, labels, family_labels, args.family_weight)
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
@@ -250,8 +313,8 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
                 if args.debug_max_batches and batch_idx >= args.debug_max_batches:
                     break
                 batch = move_to_device(batch, device)
-                logits, labels, _ = _forward_baseline(model, args.baseline, batch)
-                val_loss += float(torch.nn.functional.cross_entropy(logits, labels).detach().cpu())
+                outputs, labels, _, family_labels = _forward_baseline(model, args.baseline, batch)
+                val_loss += float(_loss(outputs, labels, family_labels, args.family_weight).detach().cpu())
                 val_batches += 1
 
         avg_train = train_loss / max(1, train_batches)
@@ -264,7 +327,7 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    metrics = _evaluate_neural(model, test_loader, args.baseline, device)
+    metrics, predictions = _evaluate_neural(model, test_loader, args.baseline, device)
     payload = {
         "method": args.baseline,
         "baseline": args.baseline,
@@ -276,6 +339,7 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
         "train_rows": train_stats,
         "val_rows": val_stats,
         "test_rows": test_stats,
+        "num_families": num_families,
         "best_val_loss": best_val_loss,
         "history": history,
         **metrics,
@@ -283,6 +347,14 @@ def train_neural(args: argparse.Namespace) -> dict[str, Any]:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     _write_json(out_dir / "metrics.json", payload)
+    _write_predictions(
+        out_dir / "predictions.npz",
+        predictions["y_true"],
+        predictions["y_prob"],
+        predictions["arch_true"],
+        predictions.get("family_true"),
+        predictions.get("family_prob"),
+    )
     torch.save({"model": model.state_dict(), "baseline": args.baseline, "metrics": payload}, out_dir / "model.pt")
     return payload
 
@@ -308,6 +380,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
+    parser.add_argument("--family-weight", type=float, default=0.1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--debug-max-batches", type=int, default=None)
     return parser
@@ -332,4 +405,3 @@ def main(argv: Iterable[str] | None = None) -> dict[str, Any]:
 
 if __name__ == "__main__":
     main()
-

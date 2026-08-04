@@ -55,6 +55,13 @@ def run_training(config_path: str = "config.yaml", resume_from: str | None = Non
     model = XNERFPlusPlus(
         num_classes=cfg["model"]["num_classes"],
         num_families=cfg["model"]["num_families"],
+        field_time=cfg["model"].get("field_time", 16),
+        use_binary=cfg["model"].get("use_binary", True),
+        disabled_modalities=cfg["model"].get("disabled_modalities", []),
+        use_alignment=cfg["model"].get("use_alignment", True),
+        use_grl=cfg["model"].get("use_grl", True),
+        use_sfs=cfg["model"].get("use_sfs", True),
+        use_mnef=cfg["model"].get("use_mnef", True),
     )
 
     trainer_kwargs = {k: v for k, v in cfg["training"].items() if k in _TRAINER_KEYS}

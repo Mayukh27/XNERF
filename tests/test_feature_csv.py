@@ -140,6 +140,10 @@ def test_api_name_sequence_csv_becomes_dynamic_rows(tmp_path: Path):
     assert rows[0]["label"] == 0
     assert rows[1]["api_call_count"] == 2
 
+    item = MalwareManifestDataset(out)[0]
+    assert item["api_ids"].nonzero().numel() == 3
+    assert item["binary_image"].sum().item() == 0
+
 
 def test_numeric_api_sequence_csv_becomes_dynamic_rows(tmp_path: Path):
     csv_dir = tmp_path / "raw" / "MalwareAnalysisDatasetsAPICallSequences"
@@ -179,3 +183,7 @@ def test_malapi_text_sequences_use_line_labels(tmp_path: Path):
     assert rows[0]["data_type"] == "api_sequence_txt"
     assert rows[0]["family"] == "Trojan"
     assert rows[1]["api_call_count"] == 2
+
+    item = MalwareManifestDataset(out)[0]
+    assert item["api_ids"].nonzero().numel() == 3
+    assert item["binary_image"].sum().item() == 0

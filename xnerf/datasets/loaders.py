@@ -16,6 +16,10 @@ from xnerf.utils.base import DatasetLoader
 from xnerf.utils.io import read_jsonl, sha256_file
 
 
+NON_BINARY_DATA_TYPES = {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"}
+FEATURE_DATA_TYPES = {"feature_csv", "feature_parquet"}
+
+
 def _cache_root_for_source(path: Path) -> Path | None:
     for parent in path.parents:
         if parent.name == "raw":
@@ -161,11 +165,11 @@ class MalwareManifestDataset(DatasetLoader):
     def _memory_trace(self, row: dict[str, Any]) -> torch.Tensor:
         out = torch.zeros(self.memory_len, 8, dtype=torch.float32)
         feature_path = row.get("feature_path")
-        if not feature_path and row.get("data_type") in {"feature_csv", "feature_parquet"}:
+        if not feature_path and row.get("data_type") in FEATURE_DATA_TYPES:
             derived = self._derived_feature_path(row)
             if derived and derived.exists():
                 feature_path = str(derived)
-        if row.get("data_type") in {"feature_csv", "feature_parquet"} and self.require_cache:
+        if row.get("data_type") in FEATURE_DATA_TYPES and self.require_cache:
             if not feature_path:
                 raise FileNotFoundError(
                     f"Manifest row requires a feature tensor cache but feature_path is empty: "
@@ -215,7 +219,7 @@ class MalwareManifestDataset(DatasetLoader):
         isr_path = row.get("isr_path")
         if self.require_cache:
             suffix = path.suffix.lower()
-            likely_binary = row.get("data_type") not in {"feature_csv", "feature_parquet", "api_sequence_csv", "api_sequence_txt"} and suffix in {".bin", ".exe", ".dll", ".so", ".elf", ""}
+            likely_binary = row.get("data_type") not in NON_BINARY_DATA_TYPES and suffix in {".bin", ".exe", ".dll", ".so", ".elf", ""}
             unknown_arch = str(row.get("arch", "unknown")).strip().lower() == "unknown"
             likely_binary = likely_binary and not unknown_arch
             if likely_binary and not isr_path:
@@ -242,7 +246,7 @@ class MalwareManifestDataset(DatasetLoader):
         data_type = row.get("data_type")
         return {
             "binary_image": torch.zeros(1, self.image_size, self.image_size, dtype=torch.float32)
-            if data_type in {"feature_csv", "feature_parquet"}
+            if data_type in NON_BINARY_DATA_TYPES
             else self._binary_image(path),
             "graph_x": graph_x,
             "graph_edge_index": graph_edge_index,
