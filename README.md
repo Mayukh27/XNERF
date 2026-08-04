@@ -18,8 +18,6 @@
 
 ---
 
-> **⚠️ Read this before anything else.** This README was written by directly auditing the source code, configs, and tests in this repository — not by rewriting the previous README from assumption. Wherever the previous README's claims could not be verified against the code (a fixed "221 families" head, an MIT `LICENSE` file, an `xnerf_architecture_4k.png` diagram, a `train.py`/`service/app.py`/`cli_analyzer.py` layout), those claims have been corrected or removed. See [Limitations](#limitations) and [Project Status](#project-status) for the full list of what is and isn't real.
-
 ## Table of Contents
 
 - [Overview](#overview)
