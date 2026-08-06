@@ -1,48 +1,44 @@
 [
   {
-    "variant": "no_isr",
-    "label": "w/o ISR Encoder",
-    "checkpoint": "runs\\ablation\\no_isr\\checkpoints\\best.pt",
+    "variant": "no_memory",
+    "label": "w/o Memory Encoder",
+    "checkpoint": "runs\\ablation\\no_memory\\checkpoints\\best.pt",
     "train": {
-      "best_val_loss": 0.45795917341312453,
+      "best_val_loss": 0.7789425485830754,
       "history": [
         {
           "epoch": 1,
-          "train_loss": 0.6050784975294475,
-          "val_loss": 1.734505650013109
+          "train_loss": 0.7943323909486703,
+          "val_loss": 0.7789425485830754
         },
         {
           "epoch": 2,
-          "train_loss": 0.4306829597940039,
-          "val_loss": 0.45795917341312453
+          "train_loss": 0.8130960265939866,
+          "val_loss": 0.9780578521847725
         },
         {
           "epoch": 3,
-          "train_loss": 0.39758594073394743,
-          "val_loss": 2.7477229469866957
-        },
-        {
-          "epoch": 4,
-          "train_loss": 0.37149752507135864,
-          "val_loss": 4.381581715193834
+          "train_loss": 0.8891521671213893,
+          "val_loss": 0.8098357501044404
         }
-      ]
+      ],
+      "skipped_nonfinite_steps": 2
     },
     "test": {
-      "accuracy": 0.9106,
-      "precision": 0.9104098492433331,
-      "recall": 0.9106,
-      "f1": 0.9104065189970788,
-      "roc_auc": 0.9660085884131714,
-      "architecture_malware_accuracy": 0.8708609271523179,
-      "cross_architecture_accuracy": 0.8708609271523179,
+      "accuracy": 0.5966,
+      "precision": 0.35593156,
+      "recall": 0.5966,
+      "f1": 0.4458619065514218,
+      "roc_auc": 0.7125506776044255,
+      "architecture_malware_accuracy": 0.17991169977924945,
+      "cross_architecture_accuracy": 0.17991169977924945,
       "per_architecture_accuracy": {
-        "x86": 0.8679245283018868,
-        "arm": 0.8980891719745223,
-        "mips": 0.8624338624338624
+        "x86": 0.07547169811320754,
+        "arm": 0.6050955414012739,
+        "mips": 0.10582010582010581
       },
-      "family_top1_accuracy": 0.44218579234972677,
-      "family_top5_accuracy": 0.585136612021858
+      "family_top1_accuracy": 0.45224043715846995,
+      "family_top5_accuracy": 0.5381420765027323
     }
   }
 ]

@@ -184,7 +184,7 @@ class MalwareManifestDataset(DatasetLoader):
                 )
         if feature_path and Path(feature_path).exists():
             loaded = torch.load(feature_path, map_location="cpu").float()
-            loaded = torch.nan_to_num(loaded, nan=0.0, posinf=0.0, neginf=0.0)
+            loaded = torch.nan_to_num(loaded, nan=0.0, posinf=0.0, neginf=0.0).clamp_(-8.0, 8.0)
             if loaded.dim() == 1:
                 loaded = torch.nn.functional.pad(loaded, (0, max(0, self.memory_len * 8 - loaded.numel())))[: self.memory_len * 8].view(self.memory_len, 8)
             out[: min(self.memory_len, loaded.shape[0]), : min(8, loaded.shape[1])] = loaded[: self.memory_len, :8]
