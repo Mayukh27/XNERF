@@ -132,7 +132,7 @@ def build_memory_trace(features: Iterable[float], rows: int = MEMORY_LEN, cols: 
         values = torch.tensor(values_list[: rows * cols], dtype=torch.float32)
         if values.numel() > 1:
             values = (values - values.mean()) / values.std().clamp_min(1e-6)
-        out[: values.numel()] = torch.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+        out[: values.numel()] = torch.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0).clamp_(-8.0, 8.0)
     return out.view(rows, cols)
 
 

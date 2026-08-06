@@ -68,6 +68,7 @@ class XNerfTrainer(Trainer):
         self.lr = lr
         self.debug_max_batches = int(debug_max_batches) if debug_max_batches else None
         self.family_names = list(family_names or getattr(train_dataset, "family_names", []))
+        self.skipped_nonfinite_steps = 0
         self.start_epoch = 1
         self.best_val_loss = float("inf")
         self.bad_epochs = 0
@@ -198,6 +199,12 @@ class XNerfTrainer(Trainer):
                     batch_idx,
                 )
 
+    def _find_nonfinite_gradient(self) -> tuple[str, dict[str, Any]] | None:
+        for name, param in self.model.named_parameters():
+            if param.grad is not None and not torch.isfinite(param.grad).all():
+                return name, self._tensor_stats(param.grad)
+        return None
+
     def _check_parameters(self, batch: dict[str, Any], batch_idx: int | None) -> None:
         for name, param in self.model.named_parameters():
             if not torch.isfinite(param).all():
@@ -219,15 +226,32 @@ class XNerfTrainer(Trainer):
 
     def _optimizer_step(self, batch: dict[str, Any], batch_idx: int | None) -> None:
         self.scaler.unscale_(self.optimizer)
-        self._check_gradients(batch, batch_idx)
+        nonfinite_grad = self._find_nonfinite_gradient()
+        if nonfinite_grad is not None:
+            name, stats = nonfinite_grad
+            self.skipped_nonfinite_steps += 1
+            print(
+                "warning: skipping optimizer step with non-finite gradient: "
+                f"{name}, stats={stats}; batch={self._batch_diagnostics(batch, batch_idx)}",
+                flush=True,
+            )
+            self.optimizer.zero_grad(set_to_none=True)
+            if self.scaler.is_enabled():
+                self.scaler.update()
+            return
         if self.grad_clip and self.grad_clip > 0:
             grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
             if torch.is_tensor(grad_norm) and not torch.isfinite(grad_norm):
-                self._raise_nonfinite(
-                    f"non-finite gradient norm detected before optimizer step: {float(grad_norm.detach().cpu())}",
-                    batch,
-                    batch_idx,
+                self.skipped_nonfinite_steps += 1
+                print(
+                    "warning: skipping optimizer step with non-finite gradient norm: "
+                    f"{float(grad_norm.detach().cpu())}; batch={self._batch_diagnostics(batch, batch_idx)}",
+                    flush=True,
                 )
+                self.optimizer.zero_grad(set_to_none=True)
+                if self.scaler.is_enabled():
+                    self.scaler.update()
+                return
         self.scaler.step(self.optimizer)
         self.scaler.update()
         self._check_parameters(batch, batch_idx)
@@ -323,7 +347,7 @@ class XNerfTrainer(Trainer):
                 flush=True,
             )
             self._save_checkpoint(self.checkpoint_dir / "last.pt", epoch, val_loss, best, bad_epochs)
-        return {"best_val_loss": best, "history": history}
+        return {"best_val_loss": best, "history": history, "skipped_nonfinite_steps": self.skipped_nonfinite_steps}
 
     @torch.no_grad()
     def validate(self) -> float:
@@ -336,4 +360,3 @@ class XNerfTrainer(Trainer):
             total += self._step(batch, train=False, batch_idx=i)
             batches += 1
         return total / max(1, batches)
-

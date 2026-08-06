@@ -39,7 +39,24 @@ class BinaryImageEncoder(BaseModule):
     def forward(self, image: torch.Tensor) -> torch.Tensor:
         if image.dim() != 4:
             raise ValueError("image must be [B,C,H,W]")
+        flat = image.flatten(1)
+        present = flat.abs().sum(dim=1).gt(0)
+        if not torch.any(present):
+            return torch.zeros(
+                image.shape[0],
+                self.proj.out_features,
+                device=image.device,
+                dtype=self.proj.weight.dtype,
+            )
         if image.shape[1] == 1:
             image = image.repeat(1, 3, 1, 1)
-        return self.proj(self.backbone(image))
-
+        if torch.all(present):
+            return self.proj(self.backbone(image))
+        out = torch.zeros(
+            image.shape[0],
+            self.proj.out_features,
+            device=image.device,
+            dtype=self.proj.weight.dtype,
+        )
+        out[present] = self.proj(self.backbone(image[present]))
+        return out

@@ -1,0 +1,31 @@
+{
+  "checkpoint": "runs\\ablation\\no_mnef\\checkpoints\\best.pt",
+  "test_manifest": "data/processed/test_publication_v2_50k.jsonl",
+  "num_test_samples": 5000,
+  "first_sample_ids": [
+    "00A346E4EE5E5DFF06868B481A6F253A36DB9D080DD09C964F82455411C5FA19",
+    "05D7B3CA6C5573DADD2B83FBF623B9DBD01AD6650792EBCE98B44F6F58EEC282",
+    "c1863c638fe81cf561e79d534b76196c",
+    "39bd966646e5fe37549f0a3c83dc1feb44fd92baebba8ff1b4087ce11f85e857",
+    "1eb040f178ceb1dc48fdf00f14eeafa5d284e4875556c85939f51ee2ab6dbade",
+    "fcd1d4b2046b5ee0b567535e9a439013e14d947daa9dc22ebe1f80ddb4c48e01",
+    "01A39CBF9776AE84079B9A5EDC6AAB643E0ACF40CD223393396F3236296A64FC",
+    "",
+    "test_ember_2018_v2_features_7041",
+    ""
+  ],
+  "prediction_counts": {
+    "0": 2053,
+    "1": 2947
+  },
+  "confusion_matrix": [
+    [
+      1858,
+      159
+    ],
+    [
+      195,
+      2788
+    ]
+  ]
+}

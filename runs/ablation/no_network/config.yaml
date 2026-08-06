@@ -1,0 +1,25 @@
+seed: 1337
+data:
+  root: data
+  full_manifest: data/processed/manifest_publication_v2_50k.jsonl
+  train_manifest: data/processed/train_publication_v2_50k.jsonl
+  val_manifest: data/processed/val_publication_v2_50k.jsonl
+  test_manifest: data/processed/test_publication_v2_50k.jsonl
+model:
+  num_classes: 2
+  num_families: 71
+  disabled_modalities:
+  - network
+training:
+  batch_size: 1
+  lr: 0.0001
+  epochs: 5
+  grad_accum: 16
+  num_workers: 0
+  checkpoint_dir: runs\ablation\no_network\checkpoints
+  patience: 2
+  use_amp: true
+local_inference:
+  checkpoint: models/best.pt
+outputs:
+  ablation_dir: runs\ablation\no_network

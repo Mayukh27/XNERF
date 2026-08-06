@@ -34,6 +34,23 @@ class MemoryEncoder(BaseModule):
         self.proj = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, memory_trace: torch.Tensor) -> torch.Tensor:
+        memory_trace = torch.nan_to_num(memory_trace.float(), nan=0.0, posinf=0.0, neginf=0.0).clamp_(-8.0, 8.0)
+        present = memory_trace.flatten(1).abs().sum(dim=1).gt(0)
+        if not torch.any(present):
+            return torch.zeros(
+                memory_trace.shape[0],
+                self.proj.out_features,
+                device=memory_trace.device,
+                dtype=self.proj.weight.dtype,
+            )
         h = memory_trace.transpose(1, 2)
-        return self.proj(self.net(h).squeeze(-1))
-
+        if torch.all(present):
+            return self.proj(self.net(h).squeeze(-1))
+        out = torch.zeros(
+            memory_trace.shape[0],
+            self.proj.out_features,
+            device=memory_trace.device,
+            dtype=self.proj.weight.dtype,
+        )
+        out[present] = self.proj(self.net(h[present]).squeeze(-1))
+        return out
