@@ -1,21 +1,31 @@
 {
-  "best_val_loss": 0.7789425485830754,
+  "best_val_loss": 0.3342179712632671,
   "history": [
     {
       "epoch": 1,
-      "train_loss": 0.7943323909486703,
-      "val_loss": 0.7789425485830754
+      "train_loss": 0.6440085964498372,
+      "val_loss": 0.5798463897192152
     },
     {
       "epoch": 2,
-      "train_loss": 0.8130960265939866,
-      "val_loss": 0.9780578521847725
+      "train_loss": 0.49061945003839935,
+      "val_loss": 0.4287414114756044
     },
     {
       "epoch": 3,
-      "train_loss": 0.8891521671213893,
-      "val_loss": 0.8098357501044404
+      "train_loss": 0.40832620946216486,
+      "val_loss": 0.3861064268199378
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.3763204759713486,
+      "val_loss": 0.4145814410489751
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.35137047535036364,
+      "val_loss": 0.3342179712632671
     }
   ],
-  "skipped_nonfinite_steps": 2
+  "skipped_nonfinite_steps": 7
 }

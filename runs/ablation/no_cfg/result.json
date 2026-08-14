@@ -1,0 +1,52 @@
+{
+  "variant": "no_cfg",
+  "label": "w/o CFG Encoder",
+  "checkpoint": "runs\\ablation\\no_cfg\\checkpoints\\best.pt",
+  "train": {
+    "best_val_loss": 0.3342179712632671,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 0.6440085964498372,
+        "val_loss": 0.5798463897192152
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.49061945003839935,
+        "val_loss": 0.4287414114756044
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.40832620946216486,
+        "val_loss": 0.3861064268199378
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.3763204759713486,
+        "val_loss": 0.4145814410489751
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.35137047535036364,
+        "val_loss": 0.3342179712632671
+      }
+    ],
+    "skipped_nonfinite_steps": 7
+  },
+  "test": {
+    "accuracy": 0.9386,
+    "precision": 0.9386801601644261,
+    "recall": 0.9386,
+    "f1": 0.9383821621767023,
+    "roc_auc": 0.9834267426173536,
+    "architecture_malware_accuracy": 0.9381898454746137,
+    "cross_architecture_accuracy": 0.9381898454746137,
+    "per_architecture_accuracy": {
+      "x86": 0.9326145552560647,
+      "arm": 0.9235668789808917,
+      "mips": 0.9497354497354498
+    },
+    "family_top1_accuracy": 0.48131147540983604,
+    "family_top5_accuracy": 0.6559562841530054
+  }
+}

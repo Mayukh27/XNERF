@@ -1,0 +1,52 @@
+{
+  "variant": "no_network",
+  "label": "w/o Network Encoder",
+  "checkpoint": "runs\\ablation\\no_network\\checkpoints\\best.pt",
+  "train": {
+    "best_val_loss": 0.3717767984027014,
+    "history": [
+      {
+        "epoch": 1,
+        "train_loss": 0.6570730875872091,
+        "val_loss": 0.5663641076789703
+      },
+      {
+        "epoch": 2,
+        "train_loss": 0.5284709804988859,
+        "val_loss": 0.5000112081385217
+      },
+      {
+        "epoch": 3,
+        "train_loss": 0.46999201182579525,
+        "val_loss": 0.4213206702012423
+      },
+      {
+        "epoch": 4,
+        "train_loss": 0.416662665141316,
+        "val_loss": 0.4155562825371744
+      },
+      {
+        "epoch": 5,
+        "train_loss": 0.3923844991893213,
+        "val_loss": 0.3717767984027014
+      }
+    ],
+    "skipped_nonfinite_steps": 7
+  },
+  "test": {
+    "accuracy": 0.9246,
+    "precision": 0.9248139707225875,
+    "recall": 0.9246,
+    "f1": 0.924679260058315,
+    "roc_auc": 0.9663740704846884,
+    "architecture_malware_accuracy": 0.8708609271523179,
+    "cross_architecture_accuracy": 0.8708609271523179,
+    "per_architecture_accuracy": {
+      "x86": 0.8679245283018868,
+      "arm": 0.910828025477707,
+      "mips": 0.8571428571428571
+    },
+    "family_top1_accuracy": 0.479344262295082,
+    "family_top5_accuracy": 0.6568306010928961
+  }
+}

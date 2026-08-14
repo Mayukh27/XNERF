@@ -1,44 +1,54 @@
 [
   {
-    "variant": "no_memory",
-    "label": "w/o Memory Encoder",
-    "checkpoint": "runs\\ablation\\no_memory\\checkpoints\\best.pt",
+    "variant": "no_cfg",
+    "label": "w/o CFG Encoder",
+    "checkpoint": "runs\\ablation\\no_cfg\\checkpoints\\best.pt",
     "train": {
-      "best_val_loss": 0.7789425485830754,
+      "best_val_loss": 0.3342179712632671,
       "history": [
         {
           "epoch": 1,
-          "train_loss": 0.7943323909486703,
-          "val_loss": 0.7789425485830754
+          "train_loss": 0.6440085964498372,
+          "val_loss": 0.5798463897192152
         },
         {
           "epoch": 2,
-          "train_loss": 0.8130960265939866,
-          "val_loss": 0.9780578521847725
+          "train_loss": 0.49061945003839935,
+          "val_loss": 0.4287414114756044
         },
         {
           "epoch": 3,
-          "train_loss": 0.8891521671213893,
-          "val_loss": 0.8098357501044404
+          "train_loss": 0.40832620946216486,
+          "val_loss": 0.3861064268199378
+        },
+        {
+          "epoch": 4,
+          "train_loss": 0.3763204759713486,
+          "val_loss": 0.4145814410489751
+        },
+        {
+          "epoch": 5,
+          "train_loss": 0.35137047535036364,
+          "val_loss": 0.3342179712632671
         }
       ],
-      "skipped_nonfinite_steps": 2
+      "skipped_nonfinite_steps": 7
     },
     "test": {
-      "accuracy": 0.5966,
-      "precision": 0.35593156,
-      "recall": 0.5966,
-      "f1": 0.4458619065514218,
-      "roc_auc": 0.7125506776044255,
-      "architecture_malware_accuracy": 0.17991169977924945,
-      "cross_architecture_accuracy": 0.17991169977924945,
+      "accuracy": 0.9386,
+      "precision": 0.9386801601644261,
+      "recall": 0.9386,
+      "f1": 0.9383821621767023,
+      "roc_auc": 0.9834267426173536,
+      "architecture_malware_accuracy": 0.9381898454746137,
+      "cross_architecture_accuracy": 0.9381898454746137,
       "per_architecture_accuracy": {
-        "x86": 0.07547169811320754,
-        "arm": 0.6050955414012739,
-        "mips": 0.10582010582010581
+        "x86": 0.9326145552560647,
+        "arm": 0.9235668789808917,
+        "mips": 0.9497354497354498
       },
-      "family_top1_accuracy": 0.45224043715846995,
-      "family_top5_accuracy": 0.5381420765027323
+      "family_top1_accuracy": 0.48131147540983604,
+      "family_top5_accuracy": 0.6559562841530054
     }
   }
 ]
